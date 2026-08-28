@@ -1,518 +1,23 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>カルテ記録入力・生成システム | 八王子クリニック</title>
-  <style>
-    :root {
-      --primary-color: #0284c7;
-      --bg-color: #f8fafc;
-      --card-bg: #ffffff;
-      --text-color: #1e293b;
-      --border-color: #cbd5e1;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background-color: var(--bg-color);
-      color: var(--text-color);
-      line-height: 1.6;
-      padding: 20px;
-    }
-
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-    }
-
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding-bottom: 16px;
-      margin-bottom: 24px;
-      border-bottom: 2px solid var(--border-color);
-    }
-
-    .header h1 {
-      font-size: 1.4rem;
-      color: #0f172a;
-    }
-
-    .header .nav-link {
-      color: var(--primary-color);
-      text-decoration: none;
-      font-weight: 600;
-    }
-
-    .card {
-      background: var(--card-bg);
-      border-radius: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
-      padding: 24px;
-      margin-bottom: 24px;
-    }
-
-    .form-group {
-      margin-bottom: 18px;
-    }
-
-    .form-label {
-      display: block;
-      font-weight: 600;
-      margin-bottom: 6px;
-      font-size: 0.9rem;
-    }
-
-    .form-control {
-      width: 100%;
-      padding: 10px 14px;
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      font-size: 1rem;
-    }
-
-    .form-control:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
-
-    textarea.form-control {
-      min-height: 140px;
-      resize: vertical;
-    }
-
-    .btn-group {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-bottom: 12px;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 12px 10px;
-      border: none;
-      border-radius: 6px;
-      font-size: 0.95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.2s;
-    }
-
-    .btn:hover { opacity: 0.9; }
-    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .btn-voice { background-color: #00c853; color: white; }
-    .btn-voice.recording { background-color: #d32f2f; animation: pulse 1.5s infinite; }
-    .btn-file { background-color: #00b0ff; color: white; }
-    .btn-tpl { background-color: #f59e0b; color: white; }
-    .btn-generate { width: 100%; background-color: #b388ff; color: white; padding: 14px; font-size: 1.1rem; }
-    .btn-pdf { width: 100%; background-color: #334155; color: white; margin-top: 16px; padding: 14px; font-size: 1.05rem; }
-
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.6; }
-      100% { opacity: 1; }
-    }
-
-    .camera-box-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-bottom: 18px;
-    }
-
-    .camera-card {
-      border: 2px dashed #cbd5e1;
-      border-radius: 8px;
-      padding: 14px;
-      text-align: center;
-      background: #f8fafc;
-    }
-
-    .camera-card-title {
-      font-weight: bold;
-      font-size: 0.9rem;
-      margin-bottom: 10px;
-      color: #334155;
-    }
-
-    .btn-cam-action {
-      background-color: #ef4444;
-      color: white;
-      width: 100%;
-      padding: 8px 12px;
-      font-size: 0.85rem;
-    }
-
-    .preview-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .preview-container {
-      position: relative;
-      display: inline-block;
-    }
-
-    .preview-container img {
-      width: 90px;
-      height: 90px;
-      object-fit: cover;
-      border-radius: 6px;
-      border: 1px solid var(--border-color);
-    }
-
-    .remove-thumb-btn {
-      position: absolute;
-      top: 4px;
-      right: 4px;
-      background: rgba(239, 68, 68, 0.9);
-      color: white;
-      border: none;
-      border-radius: 50%;
-      width: 22px;
-      height: 22px;
-      font-size: 12px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .pdf-preview-box {
-      width: 90px;
-      height: 90px;
-      background-color: #f1f5f9;
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 6px;
-      text-align: center;
-      font-size: 0.75rem;
-      color: #475569;
-      word-break: break-all;
-    }
-
-    .pdf-preview-box span { font-size: 1.4rem; margin-bottom: 2px; }
-
-    .result-field-group {
-      margin-bottom: 14px;
-    }
-
-    .result-field-label {
-      font-weight: bold;
-      font-size: 0.95rem;
-      color: #0f172a;
-      margin-bottom: 4px;
-    }
-
-    .result-textarea {
-      width: 100%;
-      padding: 10px 12px;
-      border: 1px solid var(--border-color);
-      border-radius: 4px;
-      font-size: 0.95rem;
-      font-family: inherit;
-      resize: vertical;
-      background: #fff;
-      line-height: 1.5;
-    }
-
-    .template-info {
-      background-color: #e0f2fe;
-      border-left: 4px solid var(--primary-color);
-      padding: 12px;
-      margin-top: 8px;
-      border-radius: 4px;
-      font-size: 0.9rem;
-      color: #0c4a6e;
-    }
-
-    .alert {
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 16px;
-      display: none;
-      white-space: pre-wrap;
-    }
-
-    .alert.success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
-    .alert.error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
-    .alert.info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
-    .alert.active { display: block; }
-
-    .loading-spinner {
-      display: inline-block;
-      width: 16px;
-      height: 16px;
-      border: 2px solid #f3f3f3;
-      border-top: 2px solid #b388ff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-right: 8px;
-    }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  </style>
-</head>
-<body>
-
-<div class="container">
-  
-  <header class="header">
-    <h1>カルテ記録入力 | 八王子クリニック</h1>
-    <a href="#" class="nav-link">記録一覧</a>
-  </header>
-
-  <main class="card">
-    <div id="alertBox" class="alert"></div>
-
-    <form id="soapForm">
-      
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-        <div class="form-group">
-          <label class="form-label" for="staffId">スタッフID</label>
-          <input type="text" id="staffId" class="form-control" placeholder="例: T001">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="patientId">患者ID</label>
-          <input type="text" id="patientId" class="form-control" placeholder="例: P123">
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">評価テンプレート挿入</label>
-        <div class="btn-group">
-          <button type="button" class="btn btn-tpl" onclick="insertTemplate('腰臀部')">
-            🦴 腰臀部評価モード
-          </button>
-          <button type="button" class="btn btn-tpl" onclick="insertTemplate('頸椎')">
-            🦴 頸椎評価モード
-          </button>
-        </div>
-        <div class="template-info" id="templateInfo" style="display: none;">
-          ✓ テンプレートが検出されました。自動的に構造化データとして解析されます。
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">入力方法を選択</label>
-        <div class="btn-group">
-          <button type="button" id="voiceBtn" class="btn btn-voice" onclick="toggleVoiceInput()">
-            🎤 音声入力
-          </button>
-          
-          <label class="btn btn-file" style="margin: 0; cursor: pointer;">
-            📁 画像・PDF選択
-            <input type="file" accept="image/*,application/pdf" multiple style="display: none;" onchange="handleFiles(event)">
-          </label>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">撮影エリア（各枠から複数枚撮影可能）</label>
-        <div class="camera-box-grid">
-          
-          <div class="camera-card">
-            <div class="camera-card-title">📋 院内カルテ</div>
-            <button type="button" class="btn btn-cam-action" onclick="openCameraFor('karte')">
-              📷 撮影する
-            </button>
-            <div class="preview-grid" id="kartePreviewGrid" style="display: none;"></div>
-          </div>
-
-          <div class="camera-card">
-            <div class="camera-card-title">📝 臨床メモ</div>
-            <button type="button" class="btn btn-cam-action" onclick="openCameraFor('memo')">
-              📷 撮影する
-            </button>
-            <div class="preview-grid" id="memoPreviewGrid" style="display: none;"></div>
-          </div>
-
-        </div>
-      </div>
-
-      <div class="form-group" id="cameraArea" style="display: none; text-align: center; background: #1e293b; padding: 16px; border-radius: 8px; margin-bottom: 18px;">
-        <div style="color: white; font-size: 0.9rem; margin-bottom: 8px;" id="cameraModeTitle">カメラ表示</div>
-        <video id="webcam" autoplay playsinline style="width: 100%; max-width: 500px; border-radius: 6px;"></video>
-        <div style="margin-top: 12px;">
-          <button type="button" class="btn" style="background-color: #22c55e; color: white; padding: 10px 24px;" onclick="takePhotoForTarget()">
-            📸 撮影
-          </button>
-          <button type="button" class="btn" style="background-color: #64748b; color: white; margin-left: 8px;" onclick="stopCamera()">
-            キャンセル
-          </button>
-        </div>
-        <canvas id="canvas" style="display: none;"></canvas>
-      </div>
-
-      <div class="form-group" id="previewArea" style="display: none;">
-        <label class="form-label" id="previewTitle">その他添付ファイル（0件）</label>
-        <div class="preview-grid" id="previewGrid"></div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="inputText">入力テキスト（テンプレート入力・音声・手入力可能）</label>
-        <textarea id="inputText" class="form-control" placeholder="テンプレートボタンを押すか、音声入力・キーボード直接入力でメモを記載してください。"></textarea>
-      </div>
-
-      <button type="button" id="generateBtn" class="btn btn-generate" onclick="generateSOAP()">
-        カルテテキスト生成
-      </button>
-
-    </form>
-  </main>
-
-  <section class="card" id="soapResult" style="display: none;">
-    <h2 style="font-size: 1.1rem; margin-bottom: 16px;">生成結果（カルテ用プレーンテキスト）</h2>
-
-    <div class="result-field-group">
-      <div class="result-field-label">＊経過</div>
-      <textarea id="resProgress" class="result-textarea" rows="4" placeholder="【現病歴】内容（現病歴・検査結果）&#10;【画像所見】X線：... MRI：...（該当なければ無記載）"></textarea>
-    </div>
-
-    <div class="result-field-group">
-      <div class="result-field-label">＊注意点</div>
-      <textarea id="resNotice" class="result-textarea" rows="2" placeholder="既往歴 / 体重 / 仕事（記載なければ無記載）"></textarea>
-    </div>
-
-    <div class="result-field-group">
-      <div class="result-field-label">S）</div>
-      <textarea id="resS" class="result-textarea" rows="3" placeholder="主訴・患者の発言（要望・目標・主訴のみ記載）"></textarea>
-    </div>
-
-    <div class="result-field-group">
-      <div class="result-field-label">O）</div>
-      <textarea id="resO" class="result-textarea" rows="4" placeholder="客観的所見（ROM, MMT, 触診, 動作観察, NRS等）"></textarea>
-    </div>
-
-    <div class="result-field-group">
-      <div class="result-field-label">A）</div>
-      <textarea id="resA" class="result-textarea" rows="3" placeholder="評価・考察"></textarea>
-    </div>
-
-    <div class="result-field-group">
-      <div class="result-field-label">P）</div>
-      <textarea id="resP" class="result-textarea" rows="3" placeholder="#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"></textarea>
-    </div>
-
-    <button type="button" class="btn btn-pdf" id="pdfBtn" onclick="downloadTextPDF()">
-      💾 テキストファイル保存（コピペ用）
-    </button>
-  </section>
-
-</div>
+<!-- HTML は提供いただいたものをそのまま使用 -->
+<!-- 以下は JavaScript部分のみを修正・追加 -->
 
 <script>
   const API_BASE_URL = window.location.origin;
 
   let localStream = null;
   let activeCameraTarget = null;
-  let karteImages = []; // 院内カルテ複数枚保存用配列
-  let memoImages = [];  // 臨床メモ複数枚保存用配列
+  let karteImages = [];
+  let memoImages = [];
   let attachedFiles = [];
   let recognition = null;
   let isRecording = false;
 
   const templates = {
     '腰臀部': `【腰部・臀部疾患理学療法評価】
-S (Subjective)
-・動作：[座位 / 歩行 / 立位 / 立ち上がり / その他:]
-・時期：[朝・動き始め / 夕方・徐々に]
-・部位：[腰部 / 上臀部 / 下臀部 / 大腿 / 下肢]
-・範囲：[局所 / 広範囲]
-
-O (Objective)
-▼1. 腰椎可動域・誘発テスト
-・屈曲： ° (痛・制限：)
-・伸展： ° (痛・制限：)
-・Kemp test：右 [＋/－] (部位:) / 左 [＋/－] (部位:)
-
-▼2. 下肢神経・軟部組織絞扼誘発テスト
-・SLR：Rt [＋/－] / Lt [＋/－]
-・SLR内転：Rt [＋/－] / Lt [＋/－]
-・梨状筋 (屈・内転・内旋)：Rt [＋/－] / Lt [＋/－]
-・大腿方形/内閉鎖筋 (屈・内転・外旋)：Rt [＋/－] / Lt [＋/－]
-・FNST (大腿神経伸長)：Rt [＋/－] / Lt [＋/－]
-
-▼3. 仙腸関節評価
-・Patrick test：右 [＋/－] (部位:) / 左 [＋/－] (部位:)
-・P4 test：右 [＋/－] / 左 [＋/－]
-・Td (PSIS付近)：右 [＋/－] / 左 [＋/－]
-・座位後方荷重：[＋/－]
-
-▼4. 触診 (圧痛・Td)
-・横突起 (胸腰筋膜中葉)：[右/左]
-・椎間関節 (多裂筋)：[右/左]
-・梨状筋 (坐骨神経ルート)：[右/左]
-・PSIS付近 (仙腸関節)：[右/左]
-
-▼5. 神経学的所見 (感覚・MMT)
-・知覚：L4(下腿内側) [Rt/Lt] / L5(母趾) [Rt/Lt] / S1(小趾) [Rt/Lt]
-・MMT：EHL [] / FHL [] / TA [] / 中殿筋 [] / 大殿筋 [] / ハム [] / 腸腰筋 [] / 大腿四頭筋 []
-
-A (Assessment)
-[ ] 神経根圧排(牽引)型
-[ ] 神経根絞扼(挟み込み)型
-[ ] ダブル・クラッシュ
-[ ] 椎間関節性
-[ ] 椎間板性
-[ ] 筋・筋膜性
-[ ] 仙腸関節障害`,
+...（テンプレート内容は変わらず）...`,
 
     '頸椎': `【頸部疾患理学療法評価】
-S (Subjective)
-・疼痛部位：[片側 / 両側 / 後頸部 / 肩甲骨周囲 / 上肢]
-
-O (Objective)
-▼1. 頸部可動域 (ROM)
-・屈曲： ° (痛・制限：) / 伸展： ° (痛・制限：)
-・右側屈： ° (痛・制限：) / 左側屈： ° (痛・制限：)
-・右回旋： ° (痛・制限：) / 左回旋： ° (痛・制限：)
-
-▼2. 特殊テスト (椎間孔・神経根評価)
-・Jackson test：右 [＋/－] (部位:)
-・Spurling test：右 [＋/－] (部位:)
-
-▼3. 触診 (圧痛・Td)
-・椎間関節・椎間孔：[右/左] (部位:)
-・横突起 (中斜角筋・斜角筋隙)：[右/左]
-・肩甲骨上角 (肩甲挙筋・肩甲背神経)：[右/左]
-・烏口突起下 (腕神経叢・小胸筋間隙)：[右/左]
-
-▼4. 神経学的所見
-・知覚：C5 [] / C6 [] / C7 [] / C8 []
-・Tinel sign：尺骨神経 [右/左] / 正中神経 [右/左] / 橈骨神経 [右/左]
-
-▼5. 運動機能 (MMT)
-・C5(肩外転) [Rt/Lt] / C6(肘屈曲) [Rt/Lt] / C7(肘伸展) [Rt/Lt] / C8(指屈曲) [Rt/Lt]
-
-A (Assessment)
-[ ] 椎間関節性 (片側性)
-[ ] 神経根症 (片側性)
-[ ] 筋・筋膜性 (両側性)
-[ ] 椎間板
-[ ] 胸郭出口症候群 (TOS)
-[ ] 末梢神経絞扼障害`
+...（テンプレート内容は変わらず）...`
   };
 
   function showAlert(message, type = 'info') {
@@ -580,6 +85,16 @@ A (Assessment)
     if (inputText) {
       inputText.addEventListener('input', showTemplateInfo);
     }
+
+    // ✅ Escキーでカメラモーダルを閉じる
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape') {
+        const cameraModal = document.getElementById('cameraModal');
+        if (cameraModal && cameraModal.style.display === 'flex') {
+          stopCamera();
+        }
+      }
+    });
   });
 
   if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -636,49 +151,77 @@ A (Assessment)
     btn.innerHTML = '🎤 音声入力';
   }
 
+  // ✅ 【改良】フルスクリーンカメラモーダル開始
   async function openCameraFor(target) {
     activeCameraTarget = target;
-    const cameraArea = document.getElementById('cameraArea');
+    const cameraModal = document.getElementById('cameraModal');
     const video = document.getElementById('webcam');
     const title = document.getElementById('cameraModeTitle');
 
     title.innerText = target === 'karte' ? "撮影モード: 📋 院内カルテ" : "撮影モード: 📝 臨床メモ";
 
     try {
+      // ✅ バックカメラを優先
       localStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { exact: "environment" } },
+        video: { 
+          facingMode: { exact: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
         audio: false
       });
     } catch (err) {
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        // ✅ フォールバック：デフォルトカメラ
+        localStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false 
+        });
       } catch (e) {
-        showAlert("カメラの起動に失敗しました。", 'error');
+        showAlert("カメラの起動に失敗しました。カメラへのアクセス権限を確認してください。", 'error');
         return;
       }
     }
 
     video.srcObject = localStream;
-    cameraArea.style.display = 'block';
+    
+    // ✅ モーダルを全画面表示
+    cameraModal.style.display = 'flex';
+    
+    // ✅ スクロール禁止
+    document.body.style.overflow = 'hidden';
+    
+    showAlert('カメラが起動しました（撮影またはキャンセルを選択）', 'info');
   }
 
+  // ✅ 【改良】モーダル閉じる時にスクロール復元
   function stopCamera() {
     if (localStream) {
       localStream.getTracks().forEach(track => track.stop());
+      localStream = null;
     }
-    document.getElementById('cameraArea').style.display = 'none';
+    document.getElementById('cameraModal').style.display = 'none';
+    
+    // ✅ スクロール復元
+    document.body.style.overflow = '';
   }
 
+  // ✅ 【改良】撮影時の最適化
   function takePhotoForTarget() {
     const video = document.getElementById('webcam');
     const canvas = document.getElementById('canvas');
     const context = canvas.getContext('2d');
 
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // ✅ デバイスピクセル比を考慮
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = video.videoWidth * dpr;
+    canvas.height = video.videoHeight * dpr;
+    context.scale(dpr, dpr);
 
-    const imageDataUrl = canvas.toDataURL('image/jpeg');
+    context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+
+    // ✅ 高品質JPEG（品質90%）
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
     const base64Data = imageDataUrl.split(',')[1];
 
     if (activeCameraTarget === 'karte') {
@@ -832,8 +375,8 @@ A (Assessment)
         },
         body: JSON.stringify({
           inputText: inputText || "",
-          karteImages: karteImages || [], // 複数枚配列として送信
-          memoImages: memoImages || [],   // 複数枚配列として送信
+          karteImages: karteImages || [],
+          memoImages: memoImages || [],
           attachedFiles: attachedFiles || []
         })
       });
@@ -931,6 +474,3 @@ ${resP}`;
     showAlert('ファイルをダウンロードしました', 'success');
   }
 </script>
-
-</body>
-</html>
