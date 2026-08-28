@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import asyncio
 from pathlib import Path
 from typing import Optional, List
 from fastapi import FastAPI, HTTPException
@@ -43,6 +44,10 @@ class SoapResponse(BaseModel):
     a: str = ""
     p: str = ""
 
+# 3️⃣ 最適化：コンパイル済み正規表現の事前定義（毎回コンパイルするコストを削減）
+CLEAN_MARKDOWN_REGEX = re.compile(r'^```(?:json)?\s*|\s*```$', re.MULTILINE)
+EXTRACT_JSON_REGEX = re.compile(r'\{.*\}', re.DOTALL)
+
 @app.post("/api/generate-soap", response_model=SoapResponse)
 async def generate_soap(request: GenerateSoapRequest):
     try:
@@ -64,8 +69,9 @@ async def generate_soap(request: GenerateSoapRequest):
         if not input_text and not karte_images and not memo_images and not attached_files:
             raise HTTPException(status_code=400, detail="At least one input must be provided.")
 
+        # 2️⃣ 最適化：テンプレート情報の事前チェック（なければ正規表現を実行せず即スキップ）
         template_context = ""
-        if "S (Subjective)" in input_text or "O (Objective)" in input_text or "A (Assessment)" in input_text:
+        if any(keyword in input_text for keyword in ["S (Subjective)", "O (Objective)", "A (Assessment)"]):
             sub_match = re.search(r'S \(Subjective\)([\s\S]*?)(?=O \(Objective\)|$)', input_text)
             obj_match = re.search(r'O \(Objective\)([\s\S]*?)(?=A \(Assessment\)|$)', input_text)
             ass_match = re.search(r'A \(Assessment\)([\s\S]*?)$', input_text)
@@ -111,11 +117,16 @@ async def generate_soap(request: GenerateSoapRequest):
 
 【s（Subjective）】
 - 患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみ。
-- 鍵カッコ「 」を使用。推測での加筆・言い換えは禁止。
+- 鍵カッコ「 」を使用。
 
 【o（Objective）】
-- ROM、MMT、圧痛(Td)、疼痛誘発テスト・疼痛寛解テスト、立位（CSLの左右差・骨盤前方回旋側・体幹回旋）・動作観察(片足立ちのスウェイ側)などの客観的データを記載。
-※参考: CSL評価、踏み出し/蹴り出しの予測、骨盤前方回旋テスト、骨盤スウェイテストの所見を反映。
+- ROM、MMT、圧痛(Td)、疼痛誘発テスト・疼痛寛解テスト、立位（CSLの左右差・骨盤前方回旋側）・動作観察(片足立ち骨盤スウェイ側)などのデータを記載。
+※参考: CSL（Center Sacral Line）評価：仙骨中央からの垂線（CSL）に対する第7頸椎の位置や、体幹の横へのシフト（偏位）右シフト左シフトと表現
+蹴り出し側または踏み出し側の予測：
+特徴：踏みだし側は反対の脚より接地の衝撃が大きくなり、特に足や膝に痛みがでやすい。骨盤の前への回旋量が大きくなるため、腰への負担が大きくなりやすい。
+蹴り出し側は脚が後ろにある時間が長いため、股関節・膝関節・足部の可動性がより求められ、各関節に負担が大きくなりやすい。
+骨盤前方回旋テスト：左右差がある場合はそちらが踏み出し側になりやすい。
+骨盤スウェイテスト：側方swayが大きい側が股関節内転位傾向・能動制御ができていない（受動支持）
 
 【a（Assessment）】
 - SおよびOのデータに基づく臨床的解釈、病態の推測、機能障害の根拠。
@@ -165,30 +176,33 @@ async def generate_soap(request: GenerateSoapRequest):
                 })
         
         model = genai.GenerativeModel('gemini-3.5-flash')
-        # ✅ await を削除
-        response = model.generate_content(
-            partsArr,
-            generation_config=genai.types.GenerationConfig(
-                response_mime_type="application/json",
-                temperature=0.1,
-                max_output_tokens=4096
+        
+        # 1️⃣ 最適化：非同期スレッド実行（サーバーのブロッキングを防ぎ、複数リクエストに対応）
+        def _call_gemini():
+            return model.generate_content(
+                partsArr,
+                generation_config=genai.types.GenerationConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1,
+                    max_output_tokens=4096
+                )
             )
-        )
+
+        response = await asyncio.to_thread(_call_gemini)
         
         raw_text = response.text.strip() if response.text else ""
         
         if not raw_text:
             raise ValueError("Empty response from Gemini API")
         
-        raw_text = re.sub(r'^```json\s*', '', raw_text)
-        raw_text = re.sub(r'^```\s*', '', raw_text)
-        raw_text = re.sub(r'\s*```$', '', raw_text)
-        raw_text = raw_text.strip()
+        # 3️⃣ 最適化：事前コンパイルされた正規表現でマークダウンを高速除去
+        raw_text = CLEAN_MARKDOWN_REGEX.sub('', raw_text).strip()
         
         try:
             result = json.loads(raw_text)
         except json.JSONDecodeError:
-            match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            # 3️⃣ 最適化：事前コンパイルされた抽出正規表現を使用
+            match = EXTRACT_JSON_REGEX.search(raw_text)
             if match:
                 try:
                     result = json.loads(match.group(0))
