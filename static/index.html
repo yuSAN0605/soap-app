@@ -255,29 +255,13 @@
       border-radius: 6px;
       margin-bottom: 16px;
       display: none;
+      white-space: pre-wrap;
     }
 
-    .alert.success {
-      background-color: #d4edda;
-      border: 1px solid #c3e6cb;
-      color: #155724;
-    }
-
-    .alert.error {
-      background-color: #f8d7da;
-      border: 1px solid #f5c6cb;
-      color: #721c24;
-    }
-
-    .alert.info {
-      background-color: #d1ecf1;
-      border: 1px solid #bee5eb;
-      color: #0c5460;
-    }
-
-    .alert.active {
-      display: block;
-    }
+    .alert.success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+    .alert.error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+    .alert.info { background-color: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+    .alert.active { display: block; }
 
     .loading-spinner {
       display: inline-block;
@@ -834,16 +818,28 @@ A (Assessment)
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          inputText: inputText,
+          inputText: inputText || "",
           karteImage: karteBase64 || null,
           memoImage: memoBase64 || null,
-          attachedFiles: attachedFiles
+          attachedFiles: attachedFiles || []
         })
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || `HTTP Error: ${response.status}`);
+        const errorData = await response.json().catch(() => null);
+        let errorMessage = `HTTP Error: ${response.status}`;
+
+        if (errorData?.detail) {
+          if (Array.isArray(errorData.detail)) {
+            errorMessage = errorData.detail.map(e => `${(e.loc || []).join('.')}: ${e.msg}`).join('\n');
+          } else if (typeof errorData.detail === 'string') {
+            errorMessage = errorData.detail;
+          } else {
+            errorMessage = JSON.stringify(errorData.detail);
+          }
+        }
+
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
@@ -859,7 +855,7 @@ A (Assessment)
 
     } catch (error) {
       console.error('Error:', error);
-      showAlert(`エラーが発生しました: ${error.message}`, 'error');
+      showAlert(`エラーが発生しました:\n${error.message}`, 'error');
       clearFields();
     } finally {
       generateBtn.disabled = false;

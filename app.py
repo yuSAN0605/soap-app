@@ -2,10 +2,12 @@ import os
 import json
 import re
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from typing import Optional
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel
 import google.generativeai as genai
 
@@ -19,37 +21,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# バリデーションエラーが起きた場合にログへ詳細を出力
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    print("Validation error detail:", exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
+
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# ✅ 絶対パスを指定
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
-class GenerateSoapRequest(BaseModel):
-    inputText: str
-    karteImage: str = None
-    memoImage: str = None
-    attachedFiles: list = []
-
 class SoapResponse(BaseModel):
-    progress: str
-    notice: str
-    s: str
-    o: str
-    a: str
-    p: str
+    progress: str = ""
+    notice: str = ""
+    s: str = ""
+    o: str = ""
+    a: str = ""
+    p: str = ""
 
-@app.post("/api/generate-soap", response_model=SoapResponse)
-async def generate_soap(request: GenerateSoapRequest):
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="Gemini API Key is not configured.")
-    
-    if not request.inputText and not request.karteImage and not request.memoImage and not request.attachedFiles:
-        raise HTTPException(status_code=400, detail="At least one input must be provided.")
-    
+@app.post("/api/generate-soap")
+async def generate_soap(request: Request):
     try:
+        if not GEMINI_API_KEY:
+            raise HTTPException(
+                status_code=500,
+                detail="Gemini API Key is not configured."
+            )
+
+        # 生のJSONボディを辞書として安全に取得（型チェックによる422を完全に防ぐ）
+        body = await request.json()
+        input_text = body.get("inputText", "")
+        karte_image = body.get("karteImage")
+        memo_image = body.get("memoImage")
+        attached_files = body.get("attachedFiles", [])
+
+        if not input_text and not karte_image and not memo_image and not attached_files:
+            raise HTTPException(
+                status_code=400,
+                detail="At least one input (text, image, or file) must be provided."
+            )
+
         promptText = """あなたは理学療法士向けのカルテ記録生成AIです。入力された情報を解析し、JSONオブジェクト形式で出力してください。
 
 ■ 出力形式（JSONのみ）:
@@ -63,39 +80,40 @@ async def generate_soap(request: GenerateSoapRequest):
 }"""
 
         partsArr = [{"text": promptText}]
-        
-        if request.inputText:
-            partsArr.append({"text": f"【入力テキスト】\n{request.inputText}"})
-        
-        if request.karteImage:
+
+        if input_text:
+            partsArr.append({"text": f"【入力テキスト】\n{input_text}"})
+
+        if karte_image:
             partsArr.append({
-                "inline_data": {"mime_type": "image/jpeg", "data": request.karteImage}
+                "inline_data": {"mime_type": "image/jpeg", "data": karte_image}
             })
-        
-        if request.memoImage:
+
+        if memo_image:
             partsArr.append({
-                "inline_data": {"mime_type": "image/jpeg", "data": request.memoImage}
+                "inline_data": {"mime_type": "image/jpeg", "data": memo_image}
             })
-        
-        if request.attachedFiles:
-            for fileObj in request.attachedFiles:
-                partsArr.append({
-                    "inline_data": {
-                        "mime_type": fileObj.get("mimeType", "application/octet-stream"),
-                        "data": fileObj.get("data")
-                    }
-                })
-        
+
+        if attached_files and isinstance(attached_files, list):
+            for fileObj in attached_files:
+                if isinstance(fileObj, dict) and fileObj.get("data"):
+                    partsArr.append({
+                        "inline_data": {
+                            "mime_type": fileObj.get("mimeType", "application/octet-stream"),
+                            "data": fileObj.get("data")
+                        }
+                    })
+
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(partsArr)
-        
+
         if not response.text:
-            raise HTTPException(status_code=500, detail="Failed to generate response.")
-        
+            raise HTTPException(status_code=500, detail="Failed to generate response from Gemini API.")
+
         jsonMatch = re.search(r'\{[\s\S]*\}', response.text)
         if not jsonMatch:
-            raise HTTPException(status_code=500, detail="Invalid JSON response.")
-        
+            raise HTTPException(status_code=500, detail="Invalid JSON response from Gemini API.")
+
         result = json.loads(jsonMatch.group(0))
         return SoapResponse(
             progress=result.get("progress", ""),
@@ -105,20 +123,14 @@ async def generate_soap(request: GenerateSoapRequest):
             a=result.get("a", ""),
             p=result.get("p", "")
         )
-    
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-
-# ✅ 絶対パス使用
-@app.get("/")
-async def serve_index():
-    index_file = STATIC_DIR / "index.html"
-    if not index_file.exists():
-        raise HTTPException(status_code=404, detail=f"index.html not found at {index_file}")
-    return FileResponse(str(index_file), media_type="text/html")
-
-# ✅ 絶対パス使用
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing request: {str(e)}"
+        )
 
 @app.get("/health")
 async def health_check():
@@ -128,3 +140,13 @@ async def health_check():
         "static_dir_exists": STATIC_DIR.exists(),
         "index_html_exists": (STATIC_DIR / "index.html").exists()
     }
+
+@app.get("/")
+async def serve_index():
+    index_file = STATIC_DIR / "index.html"
+    if not index_file.exists():
+        raise HTTPException(status_code=404, detail=f"index.html not found at {index_file}")
+    return FileResponse(str(index_file), media_type="text/html")
+
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
