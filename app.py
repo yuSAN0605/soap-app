@@ -36,30 +36,25 @@ if GEMINI_API_KEY:
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
-# Pydanticモデル（response_schemaとしてGeminiに渡すことで出力の安定性を保証）
+# Pydanticモデル（response_schemaとしてGeminiに渡すクラス）
+# ※ Gemini APIの制約により default="..." は使用できないため説明のみ記載
 class SoapResponse(BaseModel):
     progress: str = Field(
-        default="",
         description="【現病歴】内容\n【画像所見】X線：...\nの形式で記述。情報がない場合は空文字"
     )
     notice: str = Field(
-        default="",
         description="既往歴・体重・仕事に関する情報。存在しない項目は含めず、情報がない場合は空文字"
     )
     s: str = Field(
-        default="",
         description="患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみ。鍵カッコ「」を使用"
     )
     o: str = Field(
-        default="",
         description="ROM、MMT、圧痛(Td)、疼痛誘発・寛解テスト、立位(CSL・骨盤前方回旋・体幹回旋)、動作観察(片足立ちスウェイ)などの客観的データ"
     )
     a: str = Field(
-        default="",
         description="評価・病態解釈・鑑別理由"
     )
     p: str = Field(
-        default="",
         description="#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
     )
 
