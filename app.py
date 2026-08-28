@@ -2,12 +2,11 @@ import os
 import json
 import re
 from pathlib import Path
-from typing import Optional
-from fastapi import FastAPI, HTTPException, Request
+from typing import Optional, List
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 import google.generativeai as genai
 
@@ -21,14 +20,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    print("Validation error detail:", exc.errors())
-    return JSONResponse(
-        status_code=422,
-        content={"detail": exc.errors()},
-    )
-
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
@@ -36,101 +27,46 @@ if GEMINI_API_KEY:
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
-# Pydanticモデル（response_schemaとしてGeminiに渡すクラス）
+# Pydantic モデルによるリクエスト定義（単数・複数どちらの画像キーでも安全に受け取れるよう柔軟に定義）
+class GenerateSoapRequest(BaseModel):
+    inputText: str = ""
+    karteImage: Optional[str] = None
+    karteImages: Optional[List[str]] = Field(default_factory=list)
+    memoImage: Optional[str] = None
+    memoImages: Optional[List[str]] = Field(default_factory=list)
+    attachedFiles: List[dict] = Field(default_factory=list)
+
 class SoapResponse(BaseModel):
-    progress: str = Field(
-        description="【現病歴】内容\n【画像所見】X線：...\nの形式で記述。情報がない場合は空文字"
-    )
-    notice: str = Field(
-        description="既往歴・体重・仕事に関する情報。存在しない項目は含めず、情報がない場合は空文字"
-    )
-    s: str = Field(
-        description="患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみ。鍵カッコ「」を使用"
-    )
-    o: str = Field(
-        description="ROM、MMT、圧痛(Td)、疼痛誘発・寛解テスト、立位(CSL・骨盤前方回旋・体幹回旋)、動作観察(片足立ちスウェイ)などの客観的データ"
-    )
-    a: str = Field(
-        description="評価・病態解釈・鑑別理由"
-    )
-    p: str = Field(
-        description="#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
-    )
+    progress: str = ""
+    notice: str = ""
+    s: str = ""
+    o: str = ""
+    a: str = ""
+    p: str = ""
 
-# システムインストラクション（AIに対する絶対規則）
-SYSTEM_INSTRUCTION = """あなたは理学療法士向けの専門カルテ（SOAP）記録生成AIです。提供された情報（テキスト、画像、ファイル）を分析し、理学療法記録として正確かつ厳格に構造化したデータを作成してください。
-
-■ 情報の優先順位（情報に矛盾がある場合）:
-1. 院内カルテ画像（最優先・公式記録）
-2. 構造化テンプレート入力
-3. 臨床メモ画像
-4. フリーテキスト入力
-※ 優先度が高い情報源の内容を採用し、低い情報源の矛盾する内容は出力に含めないでください。
-
-■ 各項目の厳格な記載ルール:
-
-【progress（経過）】
-- 必ず「【現病歴】」で始めてください。「現病歴：」などの表記は不可です。
-- 画像所見が存在する場合は、必ず直前で改行し、以下のように別行で記載してください：
-  【現病歴】[現病歴の内容]
-  【画像所見】
-  X線：[所見内容]（撮影日）
-  MRI：[所見内容]（撮影日）
-- 画像所見の情報が存在しない場合は【画像所見】の行自体を出力しないでください。
-
-【notice（注意点）】
-- 入力情報内に存在する項目のみ「既往歴：」「体重：」「仕事：」の形式で記載してください。
-- 該当する情報が一切ない場合は空文字 ("") としてください。
-
-【s（Subjective）】
-- 患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみを記載してください。
-- 鍵カッコ「 」を用いて表現してください。推測での加筆・言い換えは禁止です。
-
-【o（Objective）】
-- ROM、MMT、圧痛(Td)、疼痛誘発テスト・疼痛寛解テスト、立位（CSLの左右差・骨盤前方回旋側・体幹回旋）・動作観察(片足立ちのスウェイ側)などの客観的データを記載してください。
-※参考定義:
-- CSL（Center Sacral Line）評価：仙骨中央からの垂線に対する第7頸椎の位置や、体幹の横へのシフト（右シフト/左シフト）
-- 踏み出し側/蹴り出し側の予測・特徴をふまえた評価所見を抽出してください。
-- 骨盤前方回旋テスト：左右差がある場合はそちらが踏み出し側になりやすい。
-- 骨盤スウェイテスト：側方swayが大きい側が股関節内転位傾向・能動制御ができていない（受動支持）。
-
-【a（Assessment）】
-- SおよびOのデータに基づく臨床的解釈、病態の推測、機能障害の根拠を記載してください。
-
-【p（Plan）】
-- 以下の項目だけを必ず転記してください：
-  #1 関節可動域訓練
-  #2 筋力強化訓練
-  #3 バランス訓練
-  #4 自主トレーニング指導
-
-■ 出力必須ルール:
-- 6つのキー（progress, notice, s, o, a, p）は必ずすべて出力してください。
-- 該当する情報が入力に一切存在しない項目は、キーを残したまま値を空文字列 "" にしてください。
-- 存在しない情報を推測・創作しないでください（ハルシネーション禁止）。
-"""
-
-@app.post("/api/generate-soap")
-async def generate_soap(request: Request):
+@app.post("/api/generate-soap", response_model=SoapResponse)
+async def generate_soap(request: GenerateSoapRequest):
     try:
         if not GEMINI_API_KEY:
-            raise HTTPException(
-                status_code=500,
-                detail="Gemini API Key is not configured."
-            )
+            raise HTTPException(status_code=500, detail="Gemini API Key is not configured.")
+        
+        input_text = request.inputText or ""
+        
+        # 画像リストの構築（単数形・複数形のどちらから来ても対応）
+        karte_images = request.karteImages or []
+        if not karte_images and request.karteImage:
+            karte_images = [request.karteImage]
 
-        body = await request.json()
-        input_text = body.get("inputText", "")
-        karte_images = body.get("karteImages", [])
-        memo_images = body.get("memoImages", [])
-        attached_files = body.get("attachedFiles", [])
+        memo_images = request.memoImages or []
+        if not memo_images and request.memoImage:
+            memo_images = [request.memoImage]
 
+        attached_files = request.attachedFiles or []
+        
         if not input_text and not karte_images and not memo_images and not attached_files:
-            raise HTTPException(
-                status_code=400,
-                detail="At least one input (text, image, or file) must be provided."
-            )
+            raise HTTPException(status_code=400, detail="At least one input must be provided.")
 
+        # テンプレート情報の安全な抽出
         template_context = ""
         if "S (Subjective)" in input_text or "O (Objective)" in input_text or "A (Assessment)" in input_text:
             sub_match = re.search(r'S \(Subjective\)([\s\S]*?)(?=O \(Objective\)|$)', input_text)
@@ -151,83 +87,124 @@ async def generate_soap(request: Request):
 主訴情報: {parsed_s}
 所見情報: {parsed_o}
 評価情報: {parsed_a}
-
-これらの構造化データを優先的に参照してください。
 """
 
-        user_prompt = f"""以下の入力データを解析し、指定されたルールに従ってSOAPカルテを生成してください。
+        # 詳細な理学療法ルールを含むプロンプト
+        promptText = f"""あなたは理学療法士向けの専門カルテ（SOAP）記録生成AIです。提供された情報（テキスト、画像、ファイル）を分析し、理学療法記録として正確かつ厳格に構造化したJSONデータを作成してください。
 
 {template_context}
 
-■ 入力テキストメモ:
-{input_text}
-"""
+■ 情報の優先順位（情報に矛盾がある場合）:
+1. 院内カルテ画像（最優先・公式記録）
+2. 構造化テンプレート入力
+3. 臨床メモ画像
+4. フリーテキスト入力
 
-        partsArr = [{"text": user_prompt}]
+■ 各項目の厳格な記載ルール:
+【progress（経過）】
+- 必ず「【現病歴】」で始めてください。「現病歴：」などの表記は不可。
+- 画像所見が存在する場合は必ず直前で改行し、以下のように別行で記載：
+  【現病歴】[現病歴の内容]
+  【画像所見】
+  X線：[所見内容]（撮影日）
+  MRI：[所見内容]（撮影日）
+- ない場合は【画像所見】の行を出力しない。
 
-        if karte_images and isinstance(karte_images, list):
-            for img_data in karte_images:
-                if img_data:
-                    partsArr.append({
-                        "inline_data": {"mime_type": "image/jpeg", "data": img_data}
-                    })
+【notice（注意点）】
+- 入力情報内に存在する項目のみ「既往歴：」「体重：」「仕事：」の形式で記載。ない場合は空文字。
 
-        if memo_images and isinstance(memo_images, list):
-            for img_data in memo_images:
-                if img_data:
-                    partsArr.append({
-                        "inline_data": {"mime_type": "image/jpeg", "data": img_data}
-                    })
+【s（Subjective）】
+- 患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみ。
+- 鍵カッコ「 」を使用。推測での加筆・言い換えは禁止。
 
-        if attached_files and isinstance(attached_files, list):
-            for fileObj in attached_files:
-                if isinstance(fileObj, dict) and fileObj.get("data"):
-                    partsArr.append({
-                        "inline_data": {
-                            "mime_type": fileObj.get("mimeType", "application/octet-stream"),
-                            "data": fileObj.get("data")
-                        }
-                    })
+【o（Objective）】
+- ROM、MMT、圧痛(Td)、疼痛誘発テスト・疼痛寛解テスト、立位（CSLの左右差・骨盤前方回旋側・体幹回旋）・動作観察(片足立ちのスウェイ側)などの客観的データを記載。
+※参考: CSL評価、踏み出し/蹴り出しの予測、骨盤前方回旋テスト、骨盤スウェイテストの所見を反映。
 
-        model = genai.GenerativeModel(
-            model_name='gemini-3.6-flash',
-            system_instruction=SYSTEM_INSTRUCTION
-        )
+【a（Assessment）】
+- SおよびOのデータに基づく臨床的解釈、病態の推測、機能障害の根拠。
+
+【p（Plan）】
+- 以下の項目だけを必ず転記：
+  #1 関節可動域訓練
+  #2 筋力強化訓練
+  #3 バランス訓練
+  #4 自主トレーニング指導
+
+【重要】以下のJSON形式で**必ず**レスポンスしてください。他の説明やマークダウンコードブロック（```json など）は一切含めず、純粋なJSON文字列のみを出力してください。
+
+{{
+  "progress": "...",
+  "notice": "...",
+  "s": "...",
+  "o": "...",
+  "a": "...",
+  "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+}}"""
+
+        partsArr = [{"text": promptText}]
         
-        response = model.generate_content(
+        if input_text:
+            partsArr.append({"text": f"■ 入力テキストメモ:\n{input_text}"})
+        
+        # 複数枚の院内カルテ画像を追加
+        for img_data in karte_images:
+            if img_data:
+                partsArr.append({
+                    "inline_data": {"mime_type": "image/jpeg", "data": img_data}
+                })
+        
+        # 複数枚の臨床メモ画像を追加
+        for img_data in memo_images:
+            if img_data:
+                partsArr.append({
+                    "inline_data": {"mime_type": "image/jpeg", "data": img_data}
+                })
+        
+        # その他添付ファイルを追加
+        for fileObj in attached_files:
+            if isinstance(fileObj, dict) and fileObj.get("data"):
+                partsArr.append({
+                    "inline_data": {
+                        "mime_type": fileObj.get("mimeType", "application/octet-stream"),
+                        "data": fileObj.get("data")
+                    }
+                })
+        
+        # ✅ await を確実に付与
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = await model.generate_content(
             partsArr,
             generation_config=genai.types.GenerationConfig(
                 response_mime_type="application/json",
-                response_schema=SoapResponse,
                 temperature=0.1,
-                max_output_tokens=2048
+                max_output_tokens=4096
             )
         )
-
-        if not response.text:
-            raise HTTPException(status_code=500, detail="Failed to generate response from Gemini API.")
-
-        # AIの出力テキストを安全にクリーニングしてパース
-        raw_text = response.text.strip()
+        
+        raw_text = response.text.strip() if response.text else ""
+        
+        if not raw_text:
+            raise ValueError("Empty response from Gemini API")
+        
+        # マークダウン除去
         raw_text = re.sub(r'^```json\s*', '', raw_text)
         raw_text = re.sub(r'^```\s*', '', raw_text)
         raw_text = re.sub(r'\s*```$', '', raw_text)
-
+        raw_text = raw_text.strip()
+        
+        # JSON抽出と修復
         try:
             result = json.loads(raw_text)
         except json.JSONDecodeError:
-            def extract_field(field_name):
-                match = re.search(rf'"{field_name}"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', raw_text, re.DOTALL)
-                return match.group(1).encode().decode('unicode-escape') if match else ""
-
-            result = {
-                "progress": extract_field("progress"),
-                "notice": extract_field("notice"),
-                "s": extract_field("s"),
-                "o": extract_field("o"),
-                "a": extract_field("a"),
-                "p": extract_field("p")
-            }
+            match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if match:
+                try:
+                    result = json.loads(match.group(0))
+                except json.JSONDecodeError:
+                    result = repair_json(raw_text)
+            else:
+                result = repair_json(raw_text)
         
         return SoapResponse(
             progress=result.get("progress", ""),
@@ -237,14 +214,27 @@ async def generate_soap(request: Request):
             a=result.get("a", ""),
             p=result.get("p", "")
         )
-
+    
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing request: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+def repair_json(broken_json: str) -> dict:
+    """不完全なJSONを修復する試み"""
+    for suffix in ["}", "}}", "\"}", "\"}}]"]:
+        try:
+            return json.loads(broken_json + suffix)
+        except:
+            pass
+    return {
+        "progress": "",
+        "notice": "",
+        "s": "",
+        "o": "",
+        "a": "",
+        "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+    }
 
 @app.get("/health")
 async def health_check():
