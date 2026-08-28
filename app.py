@@ -104,8 +104,8 @@ async def generate_soap(request: Request):
                         }
                     })
 
-        # モデル名を最新の指定に変更
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # 最新モデル名に指定変更
+        model = genai.GenerativeModel('gemini-3.6-flash')
         response = model.generate_content(partsArr)
 
         if not response.text:
