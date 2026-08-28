@@ -211,6 +211,11 @@ async def generate_soap(request: GenerateSoapRequest):
             else:
                 result = repair_json(raw_text)
         
+        # Pが空または未定義の場合はデフォルトの訓練メニューを確実に設定
+        p_text = result.get("p", "")
+        if not p_text or not p_text.strip():
+            p_text = "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+
         return SoapResponse(
             progress=result.get("progress", ""),
             notice=result.get("notice", ""),
