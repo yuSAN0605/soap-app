@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import google.generativeai as genai
 
 app = FastAPI()
@@ -21,7 +21,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# バリデーションエラーが起きた場合にログへ詳細を出力
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     print("Validation error detail:", exc.errors())
@@ -37,13 +36,85 @@ if GEMINI_API_KEY:
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
+# Pydanticモデル（response_schemaとしてGeminiに渡すことで出力の安定性を保証）
 class SoapResponse(BaseModel):
-    progress: str = ""
-    notice: str = ""
-    s: str = ""
-    o: str = ""
-    a: str = ""
-    p: str = ""
+    progress: str = Field(
+        default="",
+        description="【現病歴】内容\n【画像所見】X線：...\nの形式で記述。情報がない場合は空文字"
+    )
+    notice: str = Field(
+        default="",
+        description="既往歴・体重・仕事に関する情報。存在しない項目は含めず、情報がない場合は空文字"
+    )
+    s: str = Field(
+        default="",
+        description="患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみ。鍵カッコ「」を使用"
+    )
+    o: str = Field(
+        default="",
+        description="ROM、MMT、圧痛(Td)、疼痛誘発・寛解テスト、立位(CSL・骨盤前方回旋・体幹回旋)、動作観察(片足立ちスウェイ)などの客観的データ"
+    )
+    a: str = Field(
+        default="",
+        description="評価・病態解釈・鑑別理由"
+    )
+    p: str = Field(
+        default="",
+        description="#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+    )
+
+# システムインストラクション（AIに対する絶対規則）
+SYSTEM_INSTRUCTION = """あなたは理学療法士向けの専門カルテ（SOAP）記録生成AIです。提供された情報（テキスト、画像、ファイル）を分析し、理学療法記録として正確かつ厳格に構造化したデータを作成してください。
+
+■ 情報の優先順位（情報に矛盾がある場合）:
+1. 院内カルテ画像（最優先・公式記録）
+2. 構造化テンプレート入力
+3. 臨床メモ画像
+4. フリーテキスト入力
+※ 優先度が高い情報源の内容を採用し、低い情報源の矛盾する内容は出力に含めないでください。
+
+■ 各項目の厳格な記載ルール:
+
+【progress（経過）】
+- 必ず「【現病歴】」で始めてください。「現病歴：」などの表記は不可です。
+- 画像所見が存在する場合は、必ず直前で改行し、以下のように別行で記載してください：
+  【現病歴】[現病歴の内容]
+  【画像所見】
+  X線：[所見内容]（撮影日）
+  MRI：[所見内容]（撮影日）
+- 画像所見の情報が存在しない場合は【画像所見】の行自体を出力しないでください。
+
+【notice（注意点）】
+- 入力情報内に存在する項目のみ「既往歴：」「体重：」「仕事：」の形式で記載してください。
+- 該当する情報が一切ない場合は空文字 ("") としてください。
+
+【s（Subjective）】
+- 患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみを記載してください。
+- 鍵カッコ「 」を用いて表現してください。推測での加筆・言い換えは禁止です。
+
+【o（Objective）】
+- ROM、MMT、圧痛(Td)、疼痛誘発テスト・疼痛寛解テスト、立位（CSLの左右差・骨盤前方回旋側・体幹回旋）・動作観察(片足立ちのスウェイ側)などの客観的データを記載してください。
+※参考定義:
+- CSL（Center Sacral Line）評価：仙骨中央からの垂線に対する第7頸椎の位置や、体幹の横へのシフト（右シフト/左シフト）
+- 踏み出し側/蹴り出し側の予測・特徴をふまえた評価所見を抽出してください。
+- 骨盤前方回旋テスト：左右差がある場合はそちらが踏み出し側になりやすい。
+- 骨盤スウェイテスト：側方swayが大きい側が股関節内転位傾向・能動制御ができていない（受動支持）。
+
+【a（Assessment）】
+- SおよびOのデータに基づく臨床的解釈、病態の推測、機能障害の根拠を記載してください。
+
+【p（Plan）】
+- 以下の項目だけを必ず転記してください：
+  #1 関節可動域訓練
+  #2 筋力強化訓練
+  #3 バランス訓練
+  #4 自主トレーニング指導
+
+■ 出力必須ルール:
+- 6つのキー（progress, notice, s, o, a, p）は必ずすべて出力してください。
+- 該当する情報が入力に一切存在しない項目は、キーを残したまま値を空文字列 "" にしてください。
+- 存在しない情報を推測・創作しないでください（ハルシネーション禁止）。
+"""
 
 @app.post("/api/generate-soap")
 async def generate_soap(request: Request):
@@ -54,7 +125,6 @@ async def generate_soap(request: Request):
                 detail="Gemini API Key is not configured."
             )
 
-        # 生のJSONボディを辞書として安全に取得
         body = await request.json()
         input_text = body.get("inputText", "")
         karte_images = body.get("karteImages", [])
@@ -67,120 +137,40 @@ async def generate_soap(request: Request):
                 detail="At least one input (text, image, or file) must be provided."
             )
 
-        # 入力テキストからの構造化テンプレート解析処理
         template_context = ""
         if "S (Subjective)" in input_text or "O (Objective)" in input_text or "A (Assessment)" in input_text:
             sub_match = re.search(r'S \(Subjective\)([\s\S]*?)(?=O \(Objective\)|$)', input_text)
             obj_match = re.search(r'O \(Objective\)([\s\S]*?)(?=A \(Assessment\)|$)', input_text)
             ass_match = re.search(r'A \(Assessment\)([\s\S]*?)$', input_text)
 
-            parsed_s = sub_match.group(1).strip() if sub_match else ""
-            parsed_o = obj_match.group(1).strip() if obj_match else ""
-            parsed_a = ass_match.group(1).strip() if ass_match else ""
+            def safe_truncate(text, limit=200):
+                if not text:
+                    return ""
+                t = text.strip()
+                return t if len(t) <= limit else t[:limit] + "（以下省略）"
+
+            parsed_s = safe_truncate(sub_match.group(1) if sub_match else "")
+            parsed_o = safe_truncate(obj_match.group(1) if obj_match else "")
+            parsed_a = safe_truncate(ass_match.group(1) if ass_match else "")
 
             template_context = f"""【検出された構造化テンプレート情報】
-主訴情報: {parsed_s[:200]}...
-所見情報: {parsed_o[:200]}...
-評価情報: {parsed_a[:200]}...
+主訴情報: {parsed_s}
+所見情報: {parsed_o}
+評価情報: {parsed_a}
 
-これらの構造化データを優先的に参照して、以下の指示に従ってください。
+これらの構造化データを優先的に参照してください。
 """
 
-        prompt_text = f"""あなたは理学療法士向けのカルテ記録生成AIです。入力された情報（評価テンプレート項目、院内カルテ画像、臨床メモ画像、その他ファイル、テキストメモ）を総合的に解析し、指定条件を厳格に守ってJSONオブジェクト形式で出力してください。
+        user_prompt = f"""以下の入力データを解析し、指定されたルールに従ってSOAPカルテを生成してください。
 
 {template_context}
 
-■ 情報の優先度ルール（矛盾がある場合）:
-1. 院内カルテ画像（最も信頼度が高い医療記録）
-2. テンプレート入力内容（構造化データ）
-3. 臨床メモ画像
-4. フリーテキスト入力
-
-■ 画像解析の重点参照ガイドライン:
-【院内カルテ画像から優先的に読み取る項目】
-- 経過（現病歴・検査結果）
-- 画像所見（X線・MRI等）
-- 注意点（既往歴・体重・仕事）
-- A（評価・診断的考察）
-
-【臨床メモ画像から優先的に読み取る項目】
-- O（客観的所見：ROM, MMT, 触診, 誘発テスト結果等）
-- A（臨床評価・病態考察）
-
-■ SOAP各項目の厳格な定義（重複・誤混入防止）:
-
-【s（S）】※純粋な患者の発言・主訴・要望のみを記載してください
-- 患者自身の生の声、症状の訴え、治療に対する希望や目標（ニード）のみを記載してください。
-- 鍵カッコ「 」を用いて患者の発言として整理してください。
-- ❌ **絶対に入れないでください**:
-  - 「現病歴・症状」という見出しや、時系列の説明文章（→ これらは【progress（＊経過）】にのみ記載）
-  - 疼痛スケール数値（→ これらは評価データのため【o（O）】にのみ記載）
-
-【o（O）】※客観的測定数値・検査所見・評価データ
-- 理学療法士が測定・観察した数値・所見のみを記載してください（主観的な推測は除外）
-- ROM（可動域度数・制限因子）
-- MMT（徒手筋力検査）
-- 誘発テスト（陽性/陰性、誘発部位）
-- 触診（圧痛点・筋緊張）
-- 疼痛スケール評価は必ず「NRS」表記を用いて記載してください（例: NRS: 安静時 2/10, 動作時 5/10。「NPRS」表記は不可）。
-
-【a（A）】※評価・病態解釈
-- SとOの所見から導き出される推定病態・解釈・鑑別理由を記載
-
-【p（P）】※治療計画
-＊以下の項目で記載してください。
-  #1 関節可動域訓練
-  #2 筋力強化訓練
-  #3 バランス訓練
-  #4 自主トレーニング指導
-
-■ 誤混入を防ぐための境界例（厳守してください）:
-[悪い例]
-s: 「腰が痛いと言っている。1ヶ月前から徐々に悪化。NRS 6/10。」（← 現病歴や数値評価が混入しているため不可）
-o: 「前屈時に痛みを訴える」（← 主観的ニュアンス。評価数値ではないため不適切）
-
-[正しい例]
-s: 「痛みのせいで、朝かがんで顔を洗うのが一番つらい。早く普通に顔を洗えるようになりたい。」
-o: 「腰椎可動域：屈曲 30°（制限因子：腰部疼痛）、NRS：動作時 6/10、安静時 0/10」
-progress: 「【現病歴】1ヶ月前より徐々に腰痛が悪化。\\n【画像所見】X線：L4/5椎間板狭小化（他院受診時）」
-
-■ 項目別記載ルール:
-
-【progress（＊経過）】
-- 「【現病歴】内容」の形式で必ず記載してください（例: 【現病歴】約1年前より両手のしびれを自覚...）。「現病歴：」や「年月日：」などの表記は絶対に用いないでください。必ず隅付き括弧で【現病歴】と記載してください。
-- 現病歴（受傷機転、発症からの経過、増悪動作など）はこちらに集約して整理してください。
-- 【画像所見】について、入力データ内に記載がある場合は**必ず直前で改行して別行とし**、以下のように記載してください：
-  
-  【現病歴】[現病歴の内容]
-  【画像所見】X線：[所見内容](撮影日) MRI：[所見内容](撮影日)
-
-  ※【画像所見】の直前は必ず改行 (\\n) を入れてください。
-  ※撮影日がない場合は(撮影日)を省略し、所見内容のみを記載してください。
-  ※画像所見自体の情報がなければ、【画像所見】の行ごと完全に無記載としてください。
-
-【notice（＊注意点）】
-- 入力情報内に記載がある場合のみ、以下の形式で記載：
-  既往歴：
-  体重：
-  仕事：
-- 入力情報内に特に記載がない項目は、項目名も含めて完全に無記載
-
 ■ 入力テキストメモ:
 {input_text}
+"""
 
-【出力形式（JSONのみ。他の説明や前置きは不要です）】
-{{
-  "progress": "【現病歴】内容\\n【画像所見】X線：...",
-  "notice": "既往歴・体重・仕事（記載のない項目は完全に除外）",
-  "s": "主訴：「患者の生の訴えや希望・目標のみ」（現病歴文章やNRSなどの数値は一切含めない）",
-  "o": "客観的所見（ROM, MMT, 触診, 誘発テスト, NRS等の評価数値）",
-  "a": "評価・考察（A：病態解釈・鑑別理由）",
-  "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
-}}"""
+        partsArr = [{"text": user_prompt}]
 
-        partsArr = [{"text": prompt_text}]
-
-        # 複数枚の院内カルテ画像を順番に追加
         if karte_images and isinstance(karte_images, list):
             for img_data in karte_images:
                 if img_data:
@@ -188,7 +178,6 @@ progress: 「【現病歴】1ヶ月前より徐々に腰痛が悪化。\\n【画
                         "inline_data": {"mime_type": "image/jpeg", "data": img_data}
                     })
 
-        # 複数枚の臨床メモ画像を順番に追加
         if memo_images and isinstance(memo_images, list):
             for img_data in memo_images:
                 if img_data:
@@ -196,7 +185,6 @@ progress: 「【現病歴】1ヶ月前より徐々に腰痛が悪化。\\n【画
                         "inline_data": {"mime_type": "image/jpeg", "data": img_data}
                     })
 
-        # その他添付ファイルを追加
         if attached_files and isinstance(attached_files, list):
             for fileObj in attached_files:
                 if isinstance(fileObj, dict) and fileObj.get("data"):
@@ -207,17 +195,26 @@ progress: 「【現病歴】1ヶ月前より徐々に腰痛が悪化。\\n【画
                         }
                     })
 
-        model = genai.GenerativeModel('gemini-3.6-flash')
-        response = model.generate_content(partsArr)
+        model = genai.GenerativeModel(
+            model_name='gemini-3.6-flash',
+            system_instruction=SYSTEM_INSTRUCTION
+        )
+        
+        response = model.generate_content(
+            partsArr,
+            generation_config=genai.types.GenerationConfig(
+                response_mime_type="application/json",
+                response_schema=SoapResponse,
+                temperature=0.1,
+                max_output_tokens=2048
+            )
+        )
 
         if not response.text:
             raise HTTPException(status_code=500, detail="Failed to generate response from Gemini API.")
 
-        jsonMatch = re.search(r'\{[\s\S]*\}', response.text)
-        if not jsonMatch:
-            raise HTTPException(status_code=500, detail="Invalid JSON response from Gemini API.")
-
-        result = json.loads(jsonMatch.group(0))
+        result = json.loads(response.text)
+        
         return SoapResponse(
             progress=result.get("progress", ""),
             notice=result.get("notice", ""),
