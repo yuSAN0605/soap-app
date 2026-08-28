@@ -57,11 +57,11 @@ async def generate_soap(request: Request):
         # 生のJSONボディを辞書として安全に取得
         body = await request.json()
         input_text = body.get("inputText", "")
-        karte_image = body.get("karteImage")
-        memo_image = body.get("memoImage")
+        karte_images = body.get("karteImages", [])
+        memo_images = body.get("memoImages", [])
         attached_files = body.get("attachedFiles", [])
 
-        if not input_text and not karte_image and not memo_image and not attached_files:
+        if not input_text and not karte_images and not memo_images and not attached_files:
             raise HTTPException(
                 status_code=400,
                 detail="At least one input (text, image, or file) must be provided."
@@ -180,16 +180,23 @@ progress: 「【現病歴】1ヶ月前より徐々に腰痛が悪化。\\n【画
 
         partsArr = [{"text": prompt_text}]
 
-        if karte_image:
-            partsArr.append({
-                "inline_data": {"mime_type": "image/jpeg", "data": karte_image}
-            })
+        # 複数枚の院内カルテ画像を順番に追加
+        if karte_images and isinstance(karte_images, list):
+            for img_data in karte_images:
+                if img_data:
+                    partsArr.append({
+                        "inline_data": {"mime_type": "image/jpeg", "data": img_data}
+                    })
 
-        if memo_image:
-            partsArr.append({
-                "inline_data": {"mime_type": "image/jpeg", "data": memo_image}
-            })
+        # 複数枚の臨床メモ画像を順番に追加
+        if memo_images and isinstance(memo_images, list):
+            for img_data in memo_images:
+                if img_data:
+                    partsArr.append({
+                        "inline_data": {"mime_type": "image/jpeg", "data": img_data}
+                    })
 
+        # その他添付ファイルを追加
         if attached_files and isinstance(attached_files, list):
             for fileObj in attached_files:
                 if isinstance(fileObj, dict) and fileObj.get("data"):

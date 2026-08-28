@@ -155,15 +155,21 @@
       font-size: 0.85rem;
     }
 
-    .thumb-preview-box {
-      margin-top: 10px;
-      position: relative;
-      display: none;
+    .preview-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
     }
 
-    .thumb-preview-box img {
-      width: 100%;
-      max-height: 120px;
+    .preview-container {
+      position: relative;
+      display: inline-block;
+    }
+
+    .preview-container img {
+      width: 90px;
+      height: 90px;
       object-fit: cover;
       border-radius: 6px;
       border: 1px solid var(--border-color);
@@ -184,18 +190,6 @@
       display: flex;
       align-items: center;
       justify-content: center;
-    }
-
-    .preview-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 8px;
-    }
-
-    .preview-container {
-      position: relative;
-      display: inline-block;
     }
 
     .pdf-preview-box {
@@ -335,7 +329,7 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label">撮影エリア（それぞれの枠からカメラ撮影）</label>
+        <label class="form-label">撮影エリア（各枠から複数枚撮影可能）</label>
         <div class="camera-box-grid">
           
           <div class="camera-card">
@@ -343,10 +337,7 @@
             <button type="button" class="btn btn-cam-action" onclick="openCameraFor('karte')">
               📷 撮影する
             </button>
-            <div class="thumb-preview-box" id="karteThumbArea">
-              <img id="karteImg" src="" alt="院内カルテ">
-              <button type="button" class="remove-thumb-btn" onclick="clearSpecificImage('karte')">✕</button>
-            </div>
+            <div class="preview-grid" id="kartePreviewGrid" style="display: none;"></div>
           </div>
 
           <div class="camera-card">
@@ -354,10 +345,7 @@
             <button type="button" class="btn btn-cam-action" onclick="openCameraFor('memo')">
               📷 撮影する
             </button>
-            <div class="thumb-preview-box" id="memoThumbArea">
-              <img id="memoImg" src="" alt="臨床メモ">
-              <button type="button" class="remove-thumb-btn" onclick="clearSpecificImage('memo')">✕</button>
-            </div>
+            <div class="preview-grid" id="memoPreviewGrid" style="display: none;"></div>
           </div>
 
         </div>
@@ -378,7 +366,7 @@
       </div>
 
       <div class="form-group" id="previewArea" style="display: none;">
-        <label class="form-label" id="previewTitle">添付ファイル（0件）</label>
+        <label class="form-label" id="previewTitle">その他添付ファイル（0件）</label>
         <div class="preview-grid" id="previewGrid"></div>
       </div>
 
@@ -439,8 +427,8 @@
 
   let localStream = null;
   let activeCameraTarget = null;
-  let karteBase64 = null;
-  let memoBase64 = null;
+  let karteImages = []; // 院内カルテ複数枚保存用配列
+  let memoImages = [];  // 臨床メモ複数枚保存用配列
   let attachedFiles = [];
   let recognition = null;
   let isRecording = false;
@@ -694,29 +682,56 @@ A (Assessment)
     const base64Data = imageDataUrl.split(',')[1];
 
     if (activeCameraTarget === 'karte') {
-      karteBase64 = base64Data;
-      document.getElementById('karteImg').src = imageDataUrl;
-      document.getElementById('karteThumbArea').style.display = 'block';
+      karteImages.push(base64Data);
+      renderCameraPreviews('karte');
     } else if (activeCameraTarget === 'memo') {
-      memoBase64 = base64Data;
-      document.getElementById('memoImg').src = imageDataUrl;
-      document.getElementById('memoThumbArea').style.display = 'block';
+      memoImages.push(base64Data);
+      renderCameraPreviews('memo');
     }
 
     stopCamera();
-    showAlert('撮影完了', 'success');
+    showAlert('撮影完了（追加されました）', 'success');
   }
 
-  function clearSpecificImage(target) {
-    if (target === 'karte') {
-      karteBase64 = null;
-      document.getElementById('karteImg').src = '';
-      document.getElementById('karteThumbArea').style.display = 'none';
-    } else if (target === 'memo') {
-      memoBase64 = null;
-      document.getElementById('memoImg').src = '';
-      document.getElementById('memoThumbArea').style.display = 'none';
+  function renderCameraPreviews(target) {
+    const gridId = target === 'karte' ? 'kartePreviewGrid' : 'memoPreviewGrid';
+    const imagesArr = target === 'karte' ? karteImages : memoImages;
+    const grid = document.getElementById(gridId);
+
+    grid.innerHTML = '';
+
+    if (imagesArr.length === 0) {
+      grid.style.display = 'none';
+      return;
     }
+
+    grid.style.display = 'flex';
+
+    imagesArr.forEach((base64Data, index) => {
+      const container = document.createElement('div');
+      container.className = 'preview-container';
+
+      const img = document.createElement('img');
+      img.src = `data:image/jpeg;base64,${base64Data}`;
+      container.appendChild(img);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'remove-thumb-btn';
+      removeBtn.innerText = '✕';
+      removeBtn.type = 'button';
+      removeBtn.onclick = function() {
+        if (target === 'karte') {
+          karteImages.splice(index, 1);
+          renderCameraPreviews('karte');
+        } else {
+          memoImages.splice(index, 1);
+          renderCameraPreviews('memo');
+        }
+      };
+
+      container.appendChild(removeBtn);
+      grid.appendChild(container);
+    });
   }
 
   function handleFiles(event) {
@@ -765,8 +780,6 @@ A (Assessment)
 
       if (fileObj.mimeType.startsWith('image/')) {
         const img = document.createElement('img');
-        img.style.width = '90px';
-        img.style.height = '90px';
         img.src = `data:${fileObj.mimeType};base64,${fileObj.data}`;
         container.appendChild(img);
       } else {
@@ -795,7 +808,7 @@ A (Assessment)
     const inputText = document.getElementById('inputText').value;
     const generateBtn = document.getElementById('generateBtn');
 
-    if (!inputText && !karteBase64 && !memoBase64 && attachedFiles.length === 0) {
+    if (!inputText && karteImages.length === 0 && memoImages.length === 0 && attachedFiles.length === 0) {
       showAlert("テキスト、院内カルテ画像、臨床メモ画像、または添付ファイルのいずれかを指定してください。", 'error');
       return;
     }
@@ -819,8 +832,8 @@ A (Assessment)
         },
         body: JSON.stringify({
           inputText: inputText || "",
-          karteImage: karteBase64 || null,
-          memoImage: memoBase64 || null,
+          karteImages: karteImages || [], // 複数枚配列として送信
+          memoImages: memoImages || [],   // 複数枚配列として送信
           attachedFiles: attachedFiles || []
         })
       });
