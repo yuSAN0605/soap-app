@@ -54,7 +54,7 @@ async def generate_soap(request: Request):
                 detail="Gemini API Key is not configured."
             )
 
-        # 生のJSONボディを辞書として安全に取得（型チェックによる422を完全に防ぐ）
+        # 生のJSONボディを辞書として安全に取得
         body = await request.json()
         input_text = body.get("inputText", "")
         karte_image = body.get("karteImage")
@@ -104,7 +104,8 @@ async def generate_soap(request: Request):
                         }
                     })
 
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # モデル名を最新の指定に変更
+        model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(partsArr)
 
         if not response.text:
