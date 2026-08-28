@@ -1,6 +1,7 @@
 import os
 import json
 import re
+from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -21,6 +22,10 @@ app.add_middleware(
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
+
+# ✅ 絶対パスを指定
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
 
 class GenerateSoapRequest(BaseModel):
     inputText: str
@@ -45,7 +50,6 @@ async def generate_soap(request: GenerateSoapRequest):
         raise HTTPException(status_code=400, detail="At least one input must be provided.")
     
     try:
-        # ✅ プロンプトを短縮（テキストを埋め込まない）
         promptText = """あなたは理学療法士向けのカルテ記録生成AIです。入力された情報を解析し、JSONオブジェクト形式で出力してください。
 
 ■ 出力形式（JSONのみ）:
@@ -58,7 +62,6 @@ async def generate_soap(request: GenerateSoapRequest):
   "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
 }"""
 
-        # ✅ パーツ構築（テキストは別途追加）
         partsArr = [{"text": promptText}]
         
         if request.inputText:
@@ -83,14 +86,12 @@ async def generate_soap(request: GenerateSoapRequest):
                     }
                 })
         
-        # ✅ API 呼び出し
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(partsArr)
         
         if not response.text:
             raise HTTPException(status_code=500, detail="Failed to generate response.")
         
-        # ✅ JSON解析
         jsonMatch = re.search(r'\{[\s\S]*\}', response.text)
         if not jsonMatch:
             raise HTTPException(status_code=500, detail="Invalid JSON response.")
@@ -108,15 +109,22 @@ async def generate_soap(request: GenerateSoapRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
+# ✅ 絶対パス使用
 @app.get("/")
 async def serve_index():
-    return FileResponse("static/index.html", media_type="text/html")
+    index_file = STATIC_DIR / "index.html"
+    if not index_file.exists():
+        raise HTTPException(status_code=404, detail=f"index.html not found at {index_file}")
+    return FileResponse(str(index_file), media_type="text/html")
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# ✅ 絶対パス使用
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/health")
 async def health_check():
     return {
         "status": "ok",
-        "gemini_api_key_configured": bool(GEMINI_API_KEY)
+        "gemini_api_key_configured": bool(GEMINI_API_KEY),
+        "static_dir_exists": STATIC_DIR.exists(),
+        "index_html_exists": (STATIC_DIR / "index.html").exists()
     }
