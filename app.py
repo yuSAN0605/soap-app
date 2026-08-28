@@ -164,9 +164,9 @@ async def generate_soap(request: GenerateSoapRequest):
                     }
                 })
         
-        # モデル名を gemini-3.5-flash に変更
         model = genai.GenerativeModel('gemini-3.5-flash')
-        response = await model.generate_content(
+        # ✅ await を削除
+        response = model.generate_content(
             partsArr,
             generation_config=genai.types.GenerationConfig(
                 response_mime_type="application/json",
