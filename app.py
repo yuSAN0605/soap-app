@@ -37,7 +37,6 @@ BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
 # Pydanticモデル（response_schemaとしてGeminiに渡すクラス）
-# ※ Gemini APIの制約により default="..." は使用できないため説明のみ記載
 class SoapResponse(BaseModel):
     progress: str = Field(
         description="【現病歴】内容\n【画像所見】X線：...\nの形式で記述。情報がない場合は空文字"
@@ -208,7 +207,27 @@ async def generate_soap(request: Request):
         if not response.text:
             raise HTTPException(status_code=500, detail="Failed to generate response from Gemini API.")
 
-        result = json.loads(response.text)
+        # AIの出力テキストを安全にクリーニングしてパース
+        raw_text = response.text.strip()
+        raw_text = re.sub(r'^```json\s*', '', raw_text)
+        raw_text = re.sub(r'^```\s*', '', raw_text)
+        raw_text = re.sub(r'\s*```$', '', raw_text)
+
+        try:
+            result = json.loads(raw_text)
+        except json.JSONDecodeError:
+            def extract_field(field_name):
+                match = re.search(rf'"{field_name}"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', raw_text, re.DOTALL)
+                return match.group(1).encode().decode('unicode-escape') if match else ""
+
+            result = {
+                "progress": extract_field("progress"),
+                "notice": extract_field("notice"),
+                "s": extract_field("s"),
+                "o": extract_field("o"),
+                "a": extract_field("a"),
+                "p": extract_field("p")
+            }
         
         return SoapResponse(
             progress=result.get("progress", ""),
