@@ -1,0 +1,212 @@
+# app.py（修正版 - カルテシステム対応）
+import os
+import json
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import google.generativeai as genai
+
+app = FastAPI()
+
+# ✅ CORS ミドルウェア設定
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ✅ Gemini API 設定（環境変数から取得）
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+# ============================================
+# リクエスト/レスポンスモデル
+# ============================================
+class GenerateSoapRequest(BaseModel):
+    inputText: str
+    karteImage: str = None
+    memoImage: str = None
+    attachedFiles: list = []
+
+class SoapResponse(BaseModel):
+    progress: str
+    notice: str
+    s: str
+    o: str
+    a: str
+    p: str
+
+# ============================================
+# API エンドポイント
+# ============================================
+
+@app.post("/api/generate-soap", response_model=SoapResponse)
+async def generate_soap(request: GenerateSoapRequest):
+    """
+    カルテテキスト（SOAP）を生成するエンドポイント
+    """
+    if not GEMINI_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="Gemini API Key is not configured."
+        )
+    
+    if not request.inputText and not request.karteImage and not request.memoImage and not request.attachedFiles:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one input (text, image, or file) must be provided."
+        )
+    
+    try:
+        # ✅ プロンプト構築
+        promptText = """
+あなたは理学療法士向けのカルテ記録生成AIです。入力された情報（評価テンプレート項目、院内カルテ画像、臨床メモ画像、その他ファイル、テキストメモ）を総合的に解析し、指定条件を厳格に守ってJSONオブジェクト形式で出力してください。
+
+■ 情報の優先度ルール（矛盾がある場合）:
+1. 院内カルテ画像（最も信頼度が高い医療記録）
+2. テンプレート入力内容（構造化データ）
+3. 臨床メモ画像
+4. フリーテキスト入力
+
+■ SOAP各項目の厳格な定義（重複・誤混入防止）:
+
+【progress（＊経過）】
+- 「【現病歴】内容」の形式で必ず記載してください。
+- 現病歴（受傷機転、発症からの経過、増悪動作など）を集約して整理してください。
+- 【画像所見】について記載がある場合は直前で改行して別行とし、X線・MRI等の所見を記載してください。
+
+【notice（＊注意点）】
+- 既往歴・体重・仕事について、入力情報内に記載がある場合のみ記載してください。
+- 記載がない項目は完全に除外してください。
+
+【s（S）】※純粋な患者の発言・主訴・要望のみ
+- 患者自身の生の声、症状の訴え、治療に対する希望や目標のみを記載してください。
+- 鍵カッコ「 」を用いて患者の発言として整理してください。
+- 現病歴や疼痛スケール数値は一切含めないでください。
+
+【o（O）】※客観的測定数値・検査所見・評価データ
+- 理学療法士が測定・観察した数値・所見のみを記載してください。
+- ROM（可動域度数・制限因子）、MMT（徒手筋力検査）、誘発テスト、触診、疼痛スケール等。
+- 疼痛スケール評価は必ず「NRS」表記を用いてください（例: NRS: 安静時 2/10, 動作時 5/10）。
+
+【a（A）】※評価・病態解釈
+- SとOの所見から導き出される推定病態・解釈・鑑別理由を記載してください。
+
+【p（P）】※治療計画
+- 以下の項目から該当する番号のみを選択して記載：
+  #1 関節可動域訓練
+  #2 筋力強化訓練
+  #3 バランス訓練
+  #4 自主トレーニング指導
+
+■ 入力テキストメモ:
+{}
+
+【出力形式（JSONのみ。他の説明や前置きは不要です）】
+{{
+  "progress": "【現病歴】内容\\n【画像所見】X線：... MRI：...",
+  "notice": "既往歴・体重・仕事（記載のない項目は完全に除外）",
+  "s": "主訴：「患者の生の訴えや希望・目標のみ」",
+  "o": "客観的所見（ROM, MMT, 触診, 誘発テスト, NRS等の評価数値）",
+  "a": "評価・考察（病態解釈・鑑別理由）",
+  "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+}}
+""".format(request.inputText)
+
+        # ✅ パーツを構築
+        partsArr = [{"text": promptText}]
+        
+        if request.karteImage:
+            partsArr.append({
+                "inline_data": {
+                    "mime_type": "image/jpeg",
+                    "data": request.karteImage
+                }
+            })
+        
+        if request.memoImage:
+            partsArr.append({
+                "inline_data": {
+                    "mime_type": "image/jpeg",
+                    "data": request.memoImage
+                }
+            })
+        
+        if request.attachedFiles:
+            for fileObj in request.attachedFiles:
+                partsArr.append({
+                    "inline_data": {
+                        "mime_type": fileObj.get("mimeType", "application/octet-stream"),
+                        "data": fileObj.get("data")
+                    }
+                })
+        
+        # ✅ Gemini API 呼び出し
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(partsArr)
+        
+        if not response.text:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to generate response from Gemini API."
+            )
+        
+        # ✅ JSON解析
+        rawText = response.text
+        jsonMatch = __import__('re').search(r'\{[\s\S]*\}', rawText)
+        
+        if not jsonMatch:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to parse structured data from API response."
+            )
+        
+        try:
+            result = json.loads(jsonMatch.group(0))
+            return SoapResponse(
+                progress=result.get("progress", ""),
+                notice=result.get("notice", ""),
+                s=result.get("s", ""),
+                o=result.get("o", ""),
+                a=result.get("a", ""),
+                p=result.get("p", "")
+            )
+        except json.JSONDecodeError as parseError:
+            raise HTTPException(
+                status_code=500,
+                detail="JSON parsing error from API response."
+            )
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating SOAP: {str(e)}"
+        )
+
+# ============================================
+# 静的ファイル配信
+# ============================================
+
+@app.get("/")
+async def serve_index():
+    """ルートパス（/）にアクセスした際、index.html を返す"""
+    return FileResponse("static/index.html", media_type="text/html")
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# ============================================
+# ヘルスチェック
+# ============================================
+
+@app.get("/health")
+async def health_check():
+    """ヘルスチェック用エンドポイント"""
+    return {
+        "status": "ok",
+        "gemini_api_key_configured": bool(GEMINI_API_KEY)
+    }

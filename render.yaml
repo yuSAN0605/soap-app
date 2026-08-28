@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: soap-app
+    runtime: python
+    pythonVersion: 3.11
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port 8000
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false  # 環境変数ダッシュボードで設定
