@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>カルテ記録入力・生成システム | 八王子クリニック</title>
+<style>
+  :root {
+    --primary-color: #0284c7;
+    --bg-color: #f8fafc;
+    --card-bg: #ffffff;
+    --text-color: #1e293b;
+    --border-color: #cbd5e1;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    line-height: 1.6;
+    padding: 20px;
+  }
+
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    margin-bottom: 24px;
+    border-bottom: 2px solid var(--border-color);
+  }
+
+  .header h1 {
+    font-size: 1.4rem;
+    color: #0f172a;
+  }
+
+  .header .nav-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+
+  .form-group {
+    margin-bottom: 18px;
+  }
+
+  .form-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    font-size: 0.9rem;
+  }
+
+  .form-control {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 1rem;
+  }
+
+  .form-control:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+
+  textarea.form-control {
+    min-height: 140px;
+    resize: vertical;
+  }
+
+  .btn-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 12px 10px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .btn:hover { opacity: 0.9; }
+  .btn-voice { background-color: #00c853; color: white; }
+  .btn-voice.recording { background-color: #d32f2f; animation: pulse 1.5s infinite; }
+  .btn-file { background-color: #00b0ff; color: white; }
+  .btn-tpl { background-color: #f59e0b; color: white; }
+  .btn-generate { width: 100%; background-color: #b388ff; color: white; padding: 14px; font-size: 1.1rem; }
+  .btn-pdf { width: 100%; background-color: #334155; color: white; margin-top: 16px; padding: 14px; font-size: 1.05rem; }
+
+  @keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+  }
+
+  .camera-box-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .camera-card {
+    border: 2px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    background: #f8fafc;
+  }
+
+  .camera-card-title {
+    font-weight: bold;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    color: #334155;
+  }
+
+  .btn-cam-action {
+    background-color: #ef4444;
+    color: white;
+    width: 100%;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+
+  .thumb-preview-box {
+    margin-top: 10px;
+    position: relative;
+    display: none;
+  }
+
+  .thumb-preview-box img {
+    width: 100%;
+    max-height: 120px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+  }
+
+  .remove-thumb-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .preview-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  .preview-container {
+    position: relative;
+    display: inline-block;
+  }
+
+  .pdf-preview-box {
+    width: 90px;
+    height: 90px;
+    background-color: #f1f5f9;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: #475569;
+    word-break: break-all;
+  }
+
+  .pdf-preview-box span { font-size: 1.4rem; margin-bottom: 2px; }
+
+  .result-field-group {
+    margin-bottom: 14px;
+  }
+
+  .result-field-label {
+    font-weight: bold;
+    font-size: 0.95rem;
+    color: #0f172a;
+    margin-bottom: 4px;
+  }
+
+  .result-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+    background: #fff;
+    line-height: 1.5;
+  }
+
+  .template-info {
+    background-color: #e0f2fe;
+    border-left: 4px solid var(--primary-color);
+    padding: 12px;
+    margin-top: 8px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: #0c4a6e;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  
+  <header class="header">
+    <h1>カルテ記録入力 | 八王子クリニック</h1>
+    <a href="#" class="nav-link">記録一覧</a>
+  </header>
+
+  <main class="card">
+    <form id="soapForm">
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label" for="staffId">スタッフID</label>
+          <input type="text" id="staffId" class="form-control" placeholder="例: T001">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="patientId">患者ID</label>
+          <input type="text" id="patientId" class="form-control" placeholder="例: P123">
+        </div>
+      </div>
+
+      <!-- 評価テンプレート選択ボタン -->
+      <div class="form-group">
+        <label class="form-label">評価テンプレート挿入</label>
+        <div class="btn-group">
+          <button type="button" class="btn btn-tpl" onclick="insertTemplate('腰臀部')">
+            🦴 腰臀部評価モード
+          </button>
+          <button type="button" class="btn btn-tpl" onclick="insertTemplate('頸椎')">
+            🦴 頸椎評価モード
+          </button>
+        </div>
+        <div class="template-info" id="templateInfo" style="display: none;">
+          ✓ テンプレートが検出されました。自動的に構造化データとして解析されます。
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">入力方法を選択</label>
+        <div class="btn-group">
+          <button type="button" id="voiceBtn" class="btn btn-voice" onclick="toggleVoiceInput()">
+            🎤 音声入力
+          </button>
+          
+          <label class="btn btn-file" style="margin: 0; cursor: pointer;">
+            📁 画像・PDF選択
+            <input type="file" accept="image/*,application/pdf" multiple style="display: none;" onchange="handleFiles(event)">
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">撮影エリア（それぞれの枠からカメラ撮影）</label>
+        <div class="camera-box-grid">
+          
+          <div class="camera-card">
+            <div class="camera-card-title">📋 院内カルテ</div>
+            <button type="button" class="btn btn-cam-action" onclick="openCameraFor('karte')">
+              📷 撮影する
+            </button>
+            <div class="thumb-preview-box" id="karteThumbArea">
+              <img id="karteImg" src="" alt="院内カルテ">
+              <button type="button" class="remove-thumb-btn" onclick="clearSpecificImage('karte')">✕</button>
+            </div>
+          </div>
+
+          <div class="camera-card">
+            <div class="camera-card-title">📝 臨床メモ</div>
+            <button type="button" class="btn btn-cam-action" onclick="openCameraFor('memo')">
+              📷 撮影する
+            </button>
+            <div class="thumb-preview-box" id="memoThumbArea">
+              <img id="memoImg" src="" alt="臨床メモ">
+              <button type="button" class="remove-thumb-btn" onclick="clearSpecificImage('memo')">✕</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="form-group" id="cameraArea" style="display: none; text-align: center; background: #1e293b; padding: 16px; border-radius: 8px; margin-bottom: 18px;">
+        <div style="color: white; font-size: 0.9rem; margin-bottom: 8px;" id="cameraModeTitle">カメラ表示</div>
+        <video id="webcam" autoplay playsinline style="width: 100%; max-width: 500px; border-radius: 6px;"></video>
+        <div style="margin-top: 12px;">
+          <button type="button" class="btn" style="background-color: #22c55e; color: white; padding: 10px 24px;" onclick="takePhotoForTarget()">
+            📸 撮影
+          </button>
+          <button type="button" class="btn" style="background-color: #64748b; color: white; margin-left: 8px;" onclick="stopCamera()">
+            キャンセル
+          </button>
+        </div>
+        <canvas id="canvas" style="display: none;"></canvas>
+      </div>
+
+      <div class="form-group" id="previewArea" style="display: none;">
+        <label class="form-label" id="previewTitle">添付ファイル（0件）</label>
+        <div class="preview-grid" id="previewGrid"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="inputText">入力テキスト（テンプレート入力・音声・手入力可能）</label>
+        <textarea id="inputText" class="form-control" placeholder="テンプレートボタンを押すか、音声入力・キーボード直接入力でメモを記載してください。"></textarea>
+      </div>
+
+      <button type="button" class="btn btn-generate" onclick="generateSOAP()">
+        カルテテキスト生成
+      </button>
+
+    </form>
+  </main>
+
+  <section class="card" id="soapResult">
+    <h2 style="font-size: 1.1rem; margin-bottom: 16px;">生成結果（カルテ用プレーンテキスト）</h2>
+
+    <div class="result-field-group">
+      <div class="result-field-label">＊経過</div>
+      <textarea id="resProgress" class="result-textarea" rows="4" placeholder="【現病歴】内容（現病歴・検査結果）&#10;【画像所見】X線：... MRI：...（該当なければ無記載）"></textarea>
+    </div>
+
+    <div class="result-field-group">
+      <div class="result-field-label">＊注意点</div>
+      <textarea id="resNotice" class="result-textarea" rows="2" placeholder="既往歴 / 体重 / 仕事（記載なければ無記載）"></textarea>
+    </div>
+
+    <div class="result-field-group">
+      <div class="result-field-label">S）</div>
+      <textarea id="resS" class="result-textarea" rows="3" placeholder="主訴・患者の発言（要望・目標・主訴のみ記載）"></textarea>
+    </div>
+
+    <div class="result-field-group">
+      <div class="result-field-label">O）</div>
+      <textarea id="resO" class="result-textarea" rows="4" placeholder="客観的所見（ROM, MMT, 触診, 動作観察, NRS等）"></textarea>
+    </div>
+
+    <div class="result-field-group">
+      <div class="result-field-label">A）</div>
+      <textarea id="resA" class="result-textarea" rows="3" placeholder="評価・考察"></textarea>
+    </div>
+
+    <div class="result-field-group">
+      <div class="result-field-label">P）</div>
+      <textarea id="resP" class="result-textarea" rows="3" placeholder="#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"></textarea>
+    </div>
+
+    <button type="button" class="btn btn-pdf" id="pdfBtn" onclick="downloadTextPDF()">
+      💾 テキストファイル保存（コピペ用）
+    </button>
+  </section>
+
+</div>
+
+<script>
+  // RenderでデプロイしたバックエンドサーバーのURL（Render作成後に実際のURLへ更新します）
+  const BACKEND_URL = "https://soap-app-backend.onrender.com/api/generate";
+
+  let localStream = null;
+  let activeCameraTarget = null;
+  let karteBase64 = null;
+  let memoBase64 = null;
+  let attachedFiles = [];
+  let recognition = null;
+  let isRecording = false;
+
+  const templates = {
+    '腰臀部': `【腰部・臀部疾患理学療法評価】
+S (Subjective)
+・動作：[座位 / 歩行 / 立位 / 立ち上がり / その他:]
+・時期：[朝・動き始め / 夕方・徐々に]
+・部位：[腰部 / 上臀部 / 下臀部 / 大腿 / 下肢]
+・範囲：[局所 / 広範囲]
+
+O (Objective)
+▼1. 腰椎可動域・誘発テスト
+・屈曲： ° (痛・制限：)
+・伸展： ° (痛・制限：)
+・Kemp test：右 [＋/－] (部位:) / 左 [＋/－] (部位:)
+
+▼2. 下肢神経・軟部組織絞扼誘発テスト
+・SLR：Rt [＋/－] / Lt [＋/－]
+・SLR内転：Rt [＋/－] / Lt [＋/－]
+・梨状筋 (屈・内転・内旋)：Rt [＋/－] / Lt [＋/－]
+・大腿方形/内閉鎖筋 (屈・内転・外旋)：Rt [＋/－] / Lt [＋/－]
+・FNST (大腿神経伸長)：Rt [＋/－] / Lt [＋/－]
+
+▼3. 仙腸関節評価
+・Patrick test：右 [＋/－] (部位:) / 左 [＋/－]
+・P4 test：右 [＋/－] / 左 [＋/－]
+・Td (PSIS付近)：右 [＋/－] / 左 [＋/－]
+・座位後方荷重：[＋/－]
+
+▼4. 触診 (圧痛・Td)
+・横突起 (胸腰筋膜中葉)：[右/左]
+・椎間関節 (多裂筋)：[右/左]
+・梨状筋 (坐骨神経ルート)：[右/左]
+・PSIS付近 (仙腸関節)：[右/左]
+
+▼5. 神経学的所見 (感覚・MMT)
+・知覚：L4(下腿内側) [Rt/Lt] / L5(母趾) [Rt/Lt] / S1(小趾) [Rt/Lt]
+・MMT：EHL [] / FHL [] / TA [] / 中殿筋 [] / 大殿筋 [] / ハム [] / 腸腰筋 [] / 大腿四頭筋 []
+
+A (Assessment)
+[ ] 神経根圧排(牽引)型
+[ ] 神経根絞扼(挟み込み)型
+[ ] ダブル・クラッシュ
+[ ] 椎間関節性
+[ ] 椎間板性
+[ ] 筋・筋膜性
+[ ] 仙腸関節障害`,
+
+    '頸椎': `【頸部疾患理学療法評価】
+S (Subjective)
+・疼痛部位：[片側 / 両側 / 後頸部 / 肩甲骨周囲 / 上肢]
+
+O (Objective)
+▼1. 頸部可動域 (ROM)
+・屈曲： ° (痛・制限：) / 伸展： ° (痛・制限：)
+・右側屈： ° (痛・制限：) / 左側屈： ° (痛・制限：)
+・右回旋： ° (痛・制限：) / 左回旋： ° (痛・制限：)
+
+▼2. 特殊テスト (椎間孔・神経根評価)
+・Jackson test：右 [＋/－] (部位:)
+・Spurling test：右 [＋/－] (部位:)
+
+▼3. 触診 (圧痛・Td)
+・椎間関節・椎間孔：[右/左] (部位:)
+・横突起 (中斜角筋・斜角筋隙)：[右/左]
+・肩甲骨上角 (肩甲挙筋・肩甲背神経)：[右/左]
+・烏口突起下 (腕神経叢・小胸筋間隙)：[右/左]
+
+▼4. 神経学的所見
+・知覚：C5 [] / C6 [] / C7 [] / C8 []
+・Tinel sign：尺骨神経 [右/左] / 正中神経 [右/左] / 橈骨神経 [右/左]
+
+▼5. 運動機能 (MMT)
+・C5(肩外転) [Rt/Lt] / C6(肘屈曲) [Rt/Lt] / C7(肘伸展) [Rt/Lt] / C8(指屈曲) [Rt/Lt]
+
+A (Assessment)
+[ ] 椎間関節性 (片側性)
+[ ] 神経根症 (片側性)
+[ ] 筋・筋膜性 (両側性)
+[ ] 椎間板
+[ ] 胸郭出口症候群 (TOS)
+[ ] 末梢神経絞扼障害`
+  };
+
+  function parseTemplateInput(inputText) {
+    const result = {
+      hasTemplate: false,
+      subjective: '',
+      objective: '',
+      assessment: '',
+      rawText: inputText
+    };
+
+    if (inputText.includes('S (Subjective)') || inputText.includes('O (Objective)') || inputText.includes('A (Assessment)')) {
+      result.hasTemplate = true;
+
+      const subjectiveMatch = inputText.match(/S \(Subjective\)([\s\S]*?)(?=O \(Objective\)|$)/);
+      const objectiveMatch = inputText.match(/O \(Objective\)([\s\S]*?)(?=A \(Assessment\)|$)/);
+      const assessmentMatch = inputText.match(/A \(Assessment\)([\s\S]*?)$/);
+
+      if (subjectiveMatch) result.subjective = subjectiveMatch[1].trim();
+      if (objectiveMatch) result.objective = objectiveMatch[1].trim();
+      if (assessmentMatch) result.assessment = assessmentMatch[1].trim();
+    }
+
+    return result;
+  }
+
+  function insertTemplate(type) {
+    const inputText = document.getElementById('inputText');
+    const templateText = templates[type];
+    
+    if (inputText.value.trim() !== '') {
+      inputText.value = inputText.value + '\n\n' + templateText;
+    } else {
+      inputText.value = templateText;
+    }
+    
+    showTemplateInfo();
+  }
+
+  function showTemplateInfo() {
+    const inputText = document.getElementById('inputText').value;
+    const parsed = parseTemplateInput(inputText);
+    const infoBox = document.getElementById('templateInfo');
+    
+    if (parsed.hasTemplate) {
+      infoBox.style.display = 'block';
+    } else {
+      infoBox.style.display = 'none';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const inputText = document.getElementById('inputText');
+    if (inputText) {
+      inputText.addEventListener('input', showTemplateInfo);
+    }
+  });
+
+  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.lang = 'ja-JP';
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onresult = function(event) {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          transcript += event.results[i][0].transcript + '\n';
+        }
+      }
+      document.getElementById('inputText').value += transcript;
+      showTemplateInfo();
+    };
+
+    recognition.onerror = function(event) {
+      console.error("音声認識エラー:", event.error);
+      stopVoiceInput();
+    };
+
+    recognition.onend = function() {
+      if (isRecording) recognition.start();
+    };
+  }
+
+  function toggleVoiceInput() {
+    if (!recognition) {
+      alert("お使いのブラウザは音声入力に対応していません。");
+      return;
+    }
+    isRecording ? stopVoiceInput() : startVoiceInput();
+  }
+
+  function startVoiceInput() {
+    isRecording = true;
+    recognition.start();
+    const btn = document.getElementById('voiceBtn');
+    btn.classList.add('recording');
+    btn.innerHTML = '⏹️ 録音停止';
+  }
+
+  function stopVoiceInput() {
+    isRecording = false;
+    if (recognition) recognition.stop();
+    const btn = document.getElementById('voiceBtn');
+    btn.classList.remove('recording');
+    btn.innerHTML = '🎤 音声入力';
+  }
+
+  async function openCameraFor(target) {
+    activeCameraTarget = target;
+    const cameraArea = document.getElementById('cameraArea');
+    const video = document.getElementById('webcam');
+    const title = document.getElementById('cameraModeTitle');
+
+    title.innerText = target === 'karte' ? "撮影モード: 📋 院内カルテ" : "撮影モード: 📝 臨床メモ";
+
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: "environment" } },
+        audio: false
+      });
+    } catch (err) {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      } catch (e) {
+        alert("カメラの起動に失敗しました。");
+        return;
+      }
+    }
+
+    video.srcObject = localStream;
+    cameraArea.style.display = 'block';
+  }
+
+  function stopCamera() {
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+    }
+    document.getElementById('cameraArea').style.display = 'none';
+  }
+
+  function takePhotoForTarget() {
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageDataUrl = canvas.toDataURL('image/jpeg');
+    const base64Data = imageDataUrl.split(',')[1];
+
+    if (activeCameraTarget === 'karte') {
+      karteBase64 = base64Data;
+      document.getElementById('karteImg').src = imageDataUrl;
+      document.getElementById('karteThumbArea').style.display = 'block';
+    } else if (activeCameraTarget === 'memo') {
+      memoBase64 = base64Data;
+      document.getElementById('memoImg').src = imageDataUrl;
+      document.getElementById('memoThumbArea').style.display = 'block';
+    }
+
+    stopCamera();
+  }
+
+  function clearSpecificImage(target) {
+    if (target === 'karte') {
+      karteBase64 = null;
+      document.getElementById('karteImg').src = '';
+      document.getElementById('karteThumbArea').style.display = 'none';
+    } else if (target === 'memo') {
+      memoBase64 = null;
+      document.getElementById('memoImg').src = '';
+      document.getElementById('memoThumbArea').style.display = 'none';
+    }
+  }
+
+  function handleFiles(event) {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const base64Data = e.target.result.split(',')[1];
+          let mimeType = file.type || 'application/pdf';
+          
+          if (!mimeType && file.name.endsWith('.pdf')) {
+            mimeType = 'application/pdf';
+          }
+
+          attachedFiles.push({
+            mimeType: mimeType,
+            data: base64Data,
+            name: file.name
+          });
+          renderPreviews();
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  }
+
+  function renderPreviews() {
+    const previewArea = document.getElementById('previewArea');
+    const previewGrid = document.getElementById('previewGrid');
+    const previewTitle = document.getElementById('previewTitle');
+
+    previewGrid.innerHTML = '';
+
+    if (attachedFiles.length === 0) {
+      previewArea.style.display = 'none';
+      return;
+    }
+
+    previewTitle.innerText = `その他添付ファイル（${attachedFiles.length}件）`;
+    previewArea.style.display = 'block';
+
+    attachedFiles.forEach((fileObj, index) => {
+      const container = document.createElement('div');
+      container.className = 'preview-container';
+
+      if (fileObj.mimeType.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.className = 'preview-image';
+        img.style.width = '90px';
+        img.style.height = '90px';
+        img.src = `data:${fileObj.mimeType};base64,${fileObj.data}`;
+        container.appendChild(img);
+      } else {
+        const pdfBox = document.createElement('div');
+        pdfBox.className = 'pdf-preview-box';
+        const shortName = fileObj.name.length > 10 ? fileObj.name.substring(0, 8) + '...' : fileObj.name;
+        pdfBox.innerHTML = `<span>📄</span><div>${shortName}</div>`;
+        container.appendChild(pdfBox);
+      }
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'remove-thumb-btn';
+      removeBtn.innerText = '✕';
+      removeBtn.type = 'button';
+      removeBtn.onclick = function() {
+        attachedFiles.splice(index, 1);
+        renderPreviews();
+      };
+
+      container.appendChild(removeBtn);
+      previewGrid.appendChild(container);
+    });
+  }
+
+  async function generateSOAP() {
+    const inputText = document.getElementById('inputText').value;
+
+    if (!inputText && !karteBase64 && !memoBase64 && attachedFiles.length === 0) {
+      alert("テキスト、院内カルテ画像、臨床メモ画像、または添付ファイルのいずれかを指定してください。");
+      return;
+    }
+
+    document.getElementById('resProgress').value = "解析中...";
+    document.getElementById('resNotice').value = "解析中...";
+    document.getElementById('resS').value = "解析中...";
+    document.getElementById('resO').value = "解析中...";
+    document.getElementById('resA').value = "解析中...";
+    document.getElementById('resP').value = "解析中...";
+
+    const parsedTemplate = parseTemplateInput(inputText);
+    let templateContext = '';
+    
+    if (parsedTemplate.hasTemplate) {
+      templateContext = `
+【検出された構造化テンプレート情報】
+主訴情報: ${parsedTemplate.subjective.substring(0, 200)}...
+所見情報: ${parsedTemplate.objective.substring(0, 200)}...
+評価情報: ${parsedTemplate.assessment.substring(0, 200)}...
+
+これらの構造化データを優先的に参照して、以下の指示に従ってください。
+`;
+    }
+
+    const promptText = `
+あなたは理学療法士向けのカルテ記録生成AIです。入力された情報（評価テンプレート項目、院内カルテ画像、臨床メモ画像、その他ファイル、テキストメモ）を総合的に解析し、指定条件を厳格に守ってJSONオブジェクト形式で出力してください。
+
+${templateContext}
+
+■ 情報の優先度ルール（矛盾がある場合）:
+1. 院内カルテ画像（最も信頼度が高い医療記録）
+2. テンプレート入力内容（構造化データ）
+3. 臨床メモ画像
+4. フリーテキスト入力
+
+■ 画像解析の重点参照ガイドライン:
+【院内カルテ画像から優先的に読み取る項目】
+- 経過（現病歴・検査結果）
+- 画像所見（X線・MRI等）
+- 注意点（既往歴・体重・仕事）
+- A（評価・診断的考察）
+
+【臨床メモ画像から優先的に読み取る項目】
+- O（客観的所見：ROM, MMT, 触診, 誘発テスト結果等）
+- A（臨床評価・病態考察）
+
+■ SOAP各項目の厳格な定義（重複・誤混入防止）:
+
+【s（S）】※純粋な患者の発言・主訴・要望のみを記載してください
+- 患者自身の生の声、症状の訴え、治療に対する希望や目標（ニード）のみを記載してください。
+- 鍵カッコ「 」を用いて患者の発言として整理してください。
+- ❌ **絶対に入れないでください**:
+  - 「現病歴・症状」という見出しや、時系列の説明文章（→ これらは【progress（＊経過）】にのみ記載）
+  - 疼痛スケール数値（→ これらは評価データのため【o（O）】にのみ記載）
+
+【o（O）】※客観的測定数値・検査所見・評価データ
+- 理学療法士が測定・観察した数値・所見のみを記載してください（主観的な推測は除外）
+- ROM（可動域度数・制限因子）
+- MMT（徒手筋力検査）
+- 誘発テスト（陽性/陰性、誘発部位）
+- 触診（圧痛点・筋緊張）
+- 疼痛スケール評価は必ず「NRS」表記を用いて記載してください（例: NRS: 安静時 2/10, 動作時 5/10。「NPRS」表記は不可）。
+
+【a（A）】※評価・病態解釈
+- SとOの所見から導き出される推定病態・解釈・鑑別理由を記載
+
+【p（P）】※治療計画
+- 以下の項目から該当する番号のみを選択して記載：
+  #1 関節可動域訓練
+  #2 筋力強化訓練
+  #3 バランス訓練
+  #4 自主トレーニング指導
+
+■ 誤混入を防ぐための境界例（厳守してください）:
+[悪い例]
+s: 「腰が痛いと言っている。1ヶ月前から徐々に悪化。NRS 6/10。」（← 現病歴や数値評価が混入しているため不可）
+o: 「前屈時に痛みを訴える」（← 主観的ニュアンス。評価数値ではないため不適切）
+
+[正しい例]
+s: 「痛みのせいで、朝かがんで顔を洗うのが一番つらい。早く普通に顔を洗えるようになりたい。」
+o: 「腰椎可動域：屈曲 30°（制限因子：腰部疼痛）、NRS：動作時 6/10、安静時 0/10」
+progress: 「【現病歴】1ヶ月前より徐々に腰痛が悪化。\\n【画像所見】X線：L4/5椎間板狭小化（他院受診時）」
+
+■ 項目別記載ルール:
+
+【progress（＊経過）】
+- 「【現病歴】内容」の形式で必ず記載してください（例: 【現病歴】約1年前より両手のしびれを自覚...）。「現病歴：」や「年月日：」などの表記は絶対に用いないでください。必ず隅付き括弧で【現病歴】と記載してください。
+- 現病歴（受傷機転、発症からの経過、増悪動作など）はこちらに集約して整理してください。
+- 【画像所見】について、入力データ内に記載がある場合は**必ず直前で改行して別行とし**、以下のように記載してください：
+  
+  【現病歴】[現病歴の内容]
+  【画像所見】X線：[所見内容](撮影日) MRI：[所見内容](撮影日)
+
+  ※【画像所見】の直前は必ず改行 (\\n) を入れてください。
+  ※撮影日がない場合は(撮影日)を省略し、所見内容のみを記載してください。
+  ※画像所見自体の情報がなければ、【画像所見】の行ごと完全に無記載としてください。
+
+【notice（＊注意点）】
+- 入力情報内に記載がある場合のみ、以下の形式で記載：
+  既往歴：
+  体重：
+  仕事：
+- 入力情報内に特に記載がない項目は、項目名も含めて完全に無記載
+
+■ 入力テキストメモ:
+${inputText}
+
+【出力形式（JSONのみ。他の説明や前置きは不要です）】
+{
+  "progress": "【現病歴】内容\\n【画像所見】X線：... MRI：...",
+  "notice": "既往歴・体重・仕事（記載のない項目は完全に除外）",
+  "s": "主訴：「患者の生の訴えや希望・目標のみ」（現病歴文章やNRSなどの数値は一切含めない）",
+  "o": "客観的所見（ROM, MMT, 触診, 誘発テスト, NRS等の評価数値）",
+  "a": "評価・考察（A：病態解釈・鑑別理由）",
+  "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+}
+`;
+
+    const partsArr = [{ text: promptText }];
+
+    if (karteBase64) {
+      partsArr.push({
+        inline_data: { mime_type: "image/jpeg", data: karteBase64 }
+      });
+    }
+
+    if (memoBase64) {
+      partsArr.push({
+        inline_data: { mime_type: "image/jpeg", data: memoBase64 }
+      });
+    }
+
+    attachedFiles.forEach(fileObj => {
+      partsArr.push({
+        inline_data: { mime_type: fileObj.mimeType, data: fileObj.data }
+      });
+    });
+
+    try {
+      // バックエンドサーバー（Render）を経由して呼び出し
+      const response = await fetch(BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: partsArr })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || data.detail) {
+        alert("APIエラー: " + (data.detail || "バックエンドとの通信に失敗しました。"));
+        clearFields();
+        return;
+      }
+
+      const rawText = data.text;
+      
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const result = JSON.parse(jsonMatch[0]);
+          document.getElementById('resProgress').value = result.progress || "";
+          document.getElementById('resNotice').value = result.notice || "";
+          document.getElementById('resS').value = result.s || "";
+          document.getElementById('resO').value = result.o || "";
+          document.getElementById('resA').value = result.a || "";
+          document.getElementById('resP').value = result.p || "";
+        } catch (parseError) {
+          console.error("JSON解析エラー:", parseError);
+          alert("生成データの解析に失敗しました。");
+          clearFields();
+        }
+      } else {
+        alert("データの構造化処理に失敗しました。");
+        clearFields();
+      }
+
+    } catch (error) {
+      console.error(error);
+      alert("通信エラーが発生しました。");
+      clearFields();
+    }
+  }
+
+  function clearFields() {
+    document.getElementById('resProgress').value = "";
+    document.getElementById('resNotice').value = "";
+    document.getElementById('resS').value = "";
+    document.getElementById('resO').value = "";
+    document.getElementById('resA').value = "";
+    document.getElementById('resP').value = "";
+  }
+
+  function downloadTextPDF() {
+    const resProgress = document.getElementById('resProgress').value || '';
+    const resNotice = document.getElementById('resNotice').value || '';
+    const resS = document.getElementById('resS').value || '';
+    const resO = document.getElementById('resO').value || '';
+    const resA = document.getElementById('resA').value || '';
+    const resP = document.getElementById('resP').value || '';
+
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const date = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+
+    const fileName = `calte_${month}${date}${hours}${minutes}.txt`;
+
+    const textContent = `＊経過
+${resProgress}
+
+＊注意点
+${resNotice}
+
+S）
+${resS}
+
+O）
+${resO}
+
+A）
+${resA}
+
+P）
+${resP}`;
+
+    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  }
+</script>
+
+</body>
+</html>
