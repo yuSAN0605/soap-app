@@ -27,7 +27,6 @@ if GEMINI_API_KEY:
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
-# Pydantic モデルによるリクエスト定義（単数・複数どちらの画像キーでも安全に受け取れるよう柔軟に定義）
 class GenerateSoapRequest(BaseModel):
     inputText: str = ""
     karteImage: Optional[str] = None
@@ -52,7 +51,6 @@ async def generate_soap(request: GenerateSoapRequest):
         
         input_text = request.inputText or ""
         
-        # 画像リストの構築（単数形・複数形のどちらから来ても対応）
         karte_images = request.karteImages or []
         if not karte_images and request.karteImage:
             karte_images = [request.karteImage]
@@ -66,7 +64,6 @@ async def generate_soap(request: GenerateSoapRequest):
         if not input_text and not karte_images and not memo_images and not attached_files:
             raise HTTPException(status_code=400, detail="At least one input must be provided.")
 
-        # テンプレート情報の安全な抽出
         template_context = ""
         if "S (Subjective)" in input_text or "O (Objective)" in input_text or "A (Assessment)" in input_text:
             sub_match = re.search(r'S \(Subjective\)([\s\S]*?)(?=O \(Objective\)|$)', input_text)
@@ -89,7 +86,6 @@ async def generate_soap(request: GenerateSoapRequest):
 評価情報: {parsed_a}
 """
 
-        # 詳細な理学療法ルールを含むプロンプト
         promptText = f"""あなたは理学療法士向けの専門カルテ（SOAP）記録生成AIです。提供された情報（テキスト、画像、ファイル）を分析し、理学療法記録として正確かつ厳格に構造化したJSONデータを作成してください。
 
 {template_context}
@@ -147,21 +143,18 @@ async def generate_soap(request: GenerateSoapRequest):
         if input_text:
             partsArr.append({"text": f"■ 入力テキストメモ:\n{input_text}"})
         
-        # 複数枚の院内カルテ画像を追加
         for img_data in karte_images:
             if img_data:
                 partsArr.append({
                     "inline_data": {"mime_type": "image/jpeg", "data": img_data}
                 })
         
-        # 複数枚の臨床メモ画像を追加
         for img_data in memo_images:
             if img_data:
                 partsArr.append({
                     "inline_data": {"mime_type": "image/jpeg", "data": img_data}
                 })
         
-        # その他添付ファイルを追加
         for fileObj in attached_files:
             if isinstance(fileObj, dict) and fileObj.get("data"):
                 partsArr.append({
@@ -171,8 +164,8 @@ async def generate_soap(request: GenerateSoapRequest):
                     }
                 })
         
-        # ✅ await を確実に付与
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # モデル名を gemini-3.5-flash に変更
+        model = genai.GenerativeModel('gemini-3.5-flash')
         response = await model.generate_content(
             partsArr,
             generation_config=genai.types.GenerationConfig(
@@ -187,13 +180,11 @@ async def generate_soap(request: GenerateSoapRequest):
         if not raw_text:
             raise ValueError("Empty response from Gemini API")
         
-        # マークダウン除去
         raw_text = re.sub(r'^```json\s*', '', raw_text)
         raw_text = re.sub(r'^```\s*', '', raw_text)
         raw_text = re.sub(r'\s*```$', '', raw_text)
         raw_text = raw_text.strip()
         
-        # JSON抽出と修復
         try:
             result = json.loads(raw_text)
         except json.JSONDecodeError:
@@ -221,7 +212,6 @@ async def generate_soap(request: GenerateSoapRequest):
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 def repair_json(broken_json: str) -> dict:
-    """不完全なJSONを修復する試み"""
     for suffix in ["}", "}}", "\"}", "\"}}]"]:
         try:
             return json.loads(broken_json + suffix)
