@@ -129,7 +129,7 @@ async def generate_soap(request: GenerateSoapRequest):
 骨盤スウェイテスト：側方swayが大きい側が股関節内転位傾向・能動制御ができていない（受動支持）
 
 【a（Assessment）】
-- SおよびOのデータに基づく臨床的解釈、病態の推測、機能障害の根拠。
+- SおよびOのデータ（疼痛動作、ROM制限、圧痛、テスト結果など）に基づき、なぜその症状や障害が起きているのかの病態解釈、機能障害の根拠に記述してください。
 
 【p（Plan）】
 - 以下の項目だけを必ず転記：
@@ -217,7 +217,7 @@ async def generate_soap(request: GenerateSoapRequest):
             s=result.get("s", ""),
             o=result.get("o", ""),
             a=result.get("a", ""),
-            p=result.get("p", "")
+            p=p_text
         )
     
     except HTTPException:
