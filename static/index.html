@@ -112,18 +112,11 @@
 
     .btn:hover { opacity: 0.9; }
     .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-    .btn-voice { background-color: #00c853; color: white; }
-    .btn-voice.recording { background-color: #d32f2f; animation: pulse 1.5s infinite; }
-    .btn-file { background-color: #00b0ff; color: white; }
+    .btn-karte-file { background-color: #00c853; color: white; }
+    .btn-memo-file { background-color: #00b0ff; color: white; }
     .btn-tpl { background-color: #f59e0b; color: white; }
     .btn-generate { width: 100%; background-color: #b388ff; color: white; padding: 14px; font-size: 1.1rem; }
     .btn-pdf { width: 100%; background-color: #334155; color: white; margin-top: 16px; padding: 14px; font-size: 1.05rem; }
-
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.6; }
-      100% { opacity: 1; }
-    }
 
     .camera-box-grid {
       display: grid;
@@ -385,15 +378,18 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label">入力方法を選択</label>
+        <label class="form-label">ファイルから一括インプット（複数枚選択可能）</label>
         <div class="btn-group">
-          <button type="button" id="voiceBtn" class="btn btn-voice" onclick="toggleVoiceInput()">
-            🎤 音声入力
-          </button>
+          <!-- 院内カルテ画像ファイル一括選択（複数可） -->
+          <label class="btn btn-karte-file" style="margin: 0; cursor: pointer;">
+            📁 院内カルテ画像（複数選択）
+            <input type="file" accept="image/*" multiple style="display: none;" onchange="handleKarteFiles(event)">
+          </label>
           
-          <label class="btn btn-file" style="margin: 0; cursor: pointer;">
-            📁 画像・PDF選択
-            <input type="file" accept="image/*,application/pdf" multiple style="display: none;" onchange="handleFiles(event)">
+          <!-- 臨床メモ画像ファイル一括選択（複数可） -->
+          <label class="btn btn-memo-file" style="margin: 0; cursor: pointer;">
+            📁 臨床メモ画像（複数選択）
+            <input type="file" accept="image/*" multiple style="display: none;" onchange="handleMemoFiles(event)">
           </label>
         </div>
       </div>
@@ -444,8 +440,8 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="inputText">入力テキスト（テンプレート入力・音声・手入力可能）</label>
-        <textarea id="inputText" class="form-control" placeholder="テンプレートボタンを押すか、音声入力・キーボード直接入力でメモを記載してください。"></textarea>
+        <label class="form-label" for="inputText">入力テキスト（テンプレート入力・手入力可能）</label>
+        <textarea id="inputText" class="form-control" placeholder="テンプレートボタンを押すか、キーボード直接入力でメモを記載してください。"></textarea>
       </div>
 
       <button type="button" id="generateBtn" class="btn btn-generate" onclick="generateSOAP()">
@@ -503,8 +499,6 @@
   let karteImages = [];
   let memoImages = [];
   let attachedFiles = [];
-  let recognition = null;
-  let isRecording = false;
 
   const templates = {
     '腰臀部': `【腰部・臀部疾患理学療法評価】
@@ -567,7 +561,7 @@ O (Objective)
 ・Spurling test：右 [＋/－] (部位:)
 
 ▼3. 触診 (圧痛・Td)
-・椎間関節・椎間孔：[右/左] (部位:)
+·椎間関節・椎間孔：[右/左] (部位:)
 ・横突起 (中斜角筋・斜角筋隙)：[右/左]
 ·肩甲骨上角 (肩甲挙筋・肩甲背神経)：[右/左]
 ・烏口突起下 (腕神経叢・小胸筋間隙)：[右/左]
@@ -664,60 +658,6 @@ A (Assessment)
     });
   });
 
-  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SpeechRecognition();
-    recognition.lang = 'ja-JP';
-    recognition.continuous = true;
-    recognition.interimResults = false;
-
-    recognition.onresult = function(event) {
-      let transcript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          transcript += event.results[i][0].transcript + '\n';
-        }
-      }
-      document.getElementById('inputText').value += transcript;
-      showTemplateInfo();
-    };
-
-    recognition.onerror = function(event) {
-      console.error("音声認識エラー:", event.error);
-      stopVoiceInput();
-      showAlert('音声認識エラーが発生しました', 'error');
-    };
-
-    recognition.onend = function() {
-      if (isRecording) recognition.start();
-    };
-  }
-
-  function toggleVoiceInput() {
-    if (!recognition) {
-      showAlert("お使いのブラウザは音声入力に対応していません。", 'error');
-      return;
-    }
-    isRecording ? stopVoiceInput() : startVoiceInput();
-  }
-
-  function startVoiceInput() {
-    isRecording = true;
-    recognition.start();
-    const btn = document.getElementById('voiceBtn');
-    btn.classList.add('recording');
-    btn.innerHTML = '⏹️ 録音停止';
-    showAlert('音声入力開始', 'info');
-  }
-
-  function stopVoiceInput() {
-    isRecording = false;
-    if (recognition) recognition.stop();
-    const btn = document.getElementById('voiceBtn');
-    btn.classList.remove('recording');
-    btn.innerHTML = '🎤 音声入力';
-  }
-
   async function openCameraFor(target) {
     activeCameraTarget = target;
     const cameraModal = document.getElementById('cameraModal');
@@ -789,6 +729,42 @@ A (Assessment)
     showAlert('撮影完了（追加されました）', 'success');
   }
 
+  // 📁 院内カルテ画像ファイル複数選択ハンドラー
+  function handleKarteFiles(event) {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const base64Data = e.target.result.split(',')[1];
+          karteImages.push(base64Data);
+          renderCameraPreviews('karte');
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    // 同じファイルを再選択できるようにリセット
+    event.target.value = '';
+  }
+
+  // 📁 臨床メモ画像ファイル複数選択ハンドラー
+  function handleMemoFiles(event) {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const base64Data = e.target.result.split(',')[1];
+          memoImages.push(base64Data);
+          renderCameraPreviews('memo');
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    // 同じファイルを再選択できるようにリセット
+    event.target.value = '';
+  }
+
   function renderCameraPreviews(target) {
     const gridId = target === 'karte' ? 'kartePreviewGrid' : 'memoPreviewGrid';
     const imagesArr = target === 'karte' ? karteImages : memoImages;
@@ -830,82 +806,12 @@ A (Assessment)
     });
   }
 
-  function handleFiles(event) {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          const base64Data = e.target.result.split(',')[1];
-          let mimeType = file.type || 'application/pdf';
-          
-          if (!mimeType && file.name.endsWith('.pdf')) {
-            mimeType = 'application/pdf';
-          }
-
-          attachedFiles.push({
-            mimeType: mimeType,
-            data: base64Data,
-            name: file.name
-          });
-          renderPreviews();
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-  }
-
-  function renderPreviews() {
-    const previewArea = document.getElementById('previewArea');
-    const previewGrid = document.getElementById('previewGrid');
-    const previewTitle = document.getElementById('previewTitle');
-
-    previewGrid.innerHTML = '';
-
-    if (attachedFiles.length === 0) {
-      previewArea.style.display = 'none';
-      return;
-    }
-
-    previewTitle.innerText = `その他添付ファイル（${attachedFiles.length}件）`;
-    previewArea.style.display = 'block';
-
-    attachedFiles.forEach((fileObj, index) => {
-      const container = document.createElement('div');
-      container.className = 'preview-container';
-
-      if (fileObj.mimeType.startsWith('image/')) {
-        const img = document.createElement('img');
-        img.src = `data:${fileObj.mimeType};base64,${fileObj.data}`;
-        container.appendChild(img);
-      } else {
-        const pdfBox = document.createElement('div');
-        pdfBox.className = 'pdf-preview-box';
-        const shortName = fileObj.name.length > 10 ? fileObj.name.substring(0, 8) + '...' : fileObj.name;
-        pdfBox.innerHTML = `<span>📄</span><div>${shortName}</div>`;
-        container.appendChild(pdfBox);
-      }
-
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'remove-thumb-btn';
-      removeBtn.innerText = '✕';
-      removeBtn.type = 'button';
-      removeBtn.onclick = function() {
-        attachedFiles.splice(index, 1);
-        renderPreviews();
-      };
-
-      container.appendChild(removeBtn);
-      previewGrid.appendChild(container);
-    });
-  }
-
   async function generateSOAP() {
     const inputText = document.getElementById('inputText').value;
     const generateBtn = document.getElementById('generateBtn');
 
     if (!inputText && karteImages.length === 0 && memoImages.length === 0 && attachedFiles.length === 0) {
-      showAlert("テキスト、院内カルテ画像、臨床メモ画像、または添付ファイルのいずれかを指定してください。", 'error');
+      showAlert("テキスト、院内カルテ画像、または臨床メモ画像のいずれかを指定してください。", 'error');
       return;
     }
 
