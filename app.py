@@ -110,13 +110,13 @@ async def generate_soap(request: GenerateSoapRequest):
 
 ■ 各項目の厳格な記載ルール:
 【progress（経過）】
-- 先頭に「経過」という単語や記号（|＊経過など）は一切含めず、以下の固定ヘッダーから直接始めてください：
+- 絶対に「＊経過」という見出しを冒頭に出力してはなりません。
+- 必ず以下の固定ヘッダーから直接始めてください：
 算定区分：運動器リハビリテーション料(Ⅰ)
 実施区分：2単位
 実施時間：
 実施者：長岡
 本日より理学療法開始
-＊経過
 【現病歴】[現病歴の内容]
 - 画像所見が存在する場合は必ず直前で改行し、以下のように別行で記載：
   【画像所見】
@@ -133,14 +133,15 @@ async def generate_soap(request: GenerateSoapRequest):
 
 【o（Objective）】
 - 入力された客観的所見のみを記載すること。
-- ROM、MMT、疼痛誘発テスト、圧痛、アライメント、歩行、動作観察、関節運動などについて、**入力されていない数値や所見を推測・捏造してはならない。**
+- ROM、MMT、疼痛誘発テスト、圧痛、アライメント、歩行、動作観察、関節運動などについて、入力されていない数値や所見を推測・捏造してはならない。
 
 【a（Assessment）】
-- SおよびOから得られた情報を関連付け、疼痛、可動域制限、筋力低下、関節運動、アライメント、動作などの機能障害について、**理学療法士としての臨床推論を記載する。**
-- **医学的診断を新たに確定・断定しないこと。**
+- SおよびOから得られた情報を関連付け、疼痛、可動域制限、筋力低下、関節運動、アライメント、動作などの機能障害について、理学療法士としての臨床推論を記載する。
+- 医学的診断を新たに確定・断定しないこと。
 
 【p（Plan）】
-- 理由は一切記載せず、以下の4項目のみを厳格に固定で出力してください。他の文字列を含めてはなりません：
+- 理由、解説、コロン（：）以降の説明文は一切禁止します。
+- 以下の4行のみを完全固定で出力してください。他の文字列（「〜を目的とした〜」等）を含めることは厳禁です：
 #1 関節可動域訓練
 #2 筋力強化訓練
 #3 バランス訓練
@@ -162,7 +163,6 @@ async def generate_soap(request: GenerateSoapRequest):
         if input_text:
             partsArr.append({"text": f"■ 入力テキストメモ:\n{input_text}"})
         
-        # 院内カルテ画像をGeminiに読み込ませる（最優先）
         for img_data in karte_images:
             cleaned_b64 = clean_base64_data(img_data)
             if cleaned_b64:
@@ -170,7 +170,6 @@ async def generate_soap(request: GenerateSoapRequest):
                     "inline_data": {"mime_type": "image/jpeg", "data": cleaned_b64}
                 })
         
-        # 臨床メモ画像をGeminiに読み込ませる
         for img_data in memo_images:
             cleaned_b64 = clean_base64_data(img_data)
             if cleaned_b64:
@@ -178,7 +177,6 @@ async def generate_soap(request: GenerateSoapRequest):
                     "inline_data": {"mime_type": "image/jpeg", "data": cleaned_b64}
                 })
         
-        # 添付ファイルをGeminiに読み込ませる
         for fileObj in attached_files:
             if isinstance(fileObj, dict) and fileObj.get("data"):
                 cleaned_b64 = clean_base64_data(fileObj.get("data"))
@@ -223,13 +221,8 @@ async def generate_soap(request: GenerateSoapRequest):
             else:
                 result = repair_json(raw_text)
         
-        p_text = result.get("p", "")
-        # 強制的にPを固定フォーマットにする
+        # バックエンド側でも強制的にPを4行固定に上書きする安全策
         fixed_p = "#1 関節可動域訓練\n#2 筋力強化訓練\n#3 バランス訓練\n#4 自主トレーニング指導"
-        if not p_text or "関節可動域訓練" not in p_text:
-            p_text = fixed_p
-        else:
-            p_text = fixed_p
 
         return SoapResponse(
             progress=result.get("progress", ""),
@@ -237,7 +230,7 @@ async def generate_soap(request: GenerateSoapRequest):
             s=result.get("s", ""),
             o=result.get("o", ""),
             a=result.get("a", ""),
-            p=p_text
+            p=fixed_p
         )
     
     except HTTPException:
