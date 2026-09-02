@@ -903,8 +903,8 @@ A (Assessment)
 
     const fileName = `calte_${month}${date}${hours}${minutes}.txt`;
 
-    const textContent = `＊経過
-${resProgress}
+    // 修正：先頭の余分な「＊経過」を削除しました
+    const textContent = `${resProgress}
 
 ＊注意点
 ${resNotice}
