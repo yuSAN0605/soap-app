@@ -110,8 +110,7 @@ async def generate_soap(request: GenerateSoapRequest):
 
 ■ 各項目の厳格な記載ルール:
 【progress（経過）】
-- 「＊経過」という見出しや文字は一切出力してはなりません。
-- 必ず以下の固定ヘッダーから直接始めてください：
+- 出力の先頭は必ず以下のテキストから始めてください：
 算定区分：運動器リハビリテーション料(Ⅰ)
 実施区分：2単位
 実施時間：
@@ -220,10 +219,14 @@ async def generate_soap(request: GenerateSoapRequest):
             else:
                 result = repair_json(raw_text)
         
+        # 🛡️ 安全機能：万が一AIが先頭に「＊経過」や「経過」をつけて出力した場合に、Python側で強制的にカットする
+        raw_progress = result.get("progress", "")
+        cleaned_progress = re.sub(r'^(?:[＊\*]?経過\s*[\r\n]*)+', '', raw_progress).strip()
+
         fixed_p = "#1 関節可動域訓練\n#2 筋力強化訓練\n#3 バランス訓練\n#4 自主トレーニング指導"
 
         return SoapResponse(
-            progress=result.get("progress", ""),
+            progress=cleaned_progress,
             notice=result.get("notice", ""),
             s=result.get("s", ""),
             o=result.get("o", ""),
