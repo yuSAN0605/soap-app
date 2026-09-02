@@ -185,25 +185,6 @@
       justify-content: center;
     }
 
-    .pdf-preview-box {
-      width: 90px;
-      height: 90px;
-      background-color: #f1f5f9;
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 6px;
-      text-align: center;
-      font-size: 0.75rem;
-      color: #475569;
-      word-break: break-all;
-    }
-
-    .pdf-preview-box span { font-size: 1.4rem; margin-bottom: 2px; }
-
     .result-field-group {
       margin-bottom: 14px;
     }
@@ -266,7 +247,6 @@
       100% { transform: rotate(360deg); }
     }
 
-    /* ─── 全画面フルスクリーンカメラ・モーダルスタイル ─── */
     #cameraModal {
       position: fixed;
       top: 0;
@@ -380,13 +360,11 @@
       <div class="form-group">
         <label class="form-label">ファイルから一括インプット（複数枚選択可能）</label>
         <div class="btn-group">
-          <!-- 院内カルテ画像ファイル一括選択（複数可） -->
           <label class="btn btn-karte-file" style="margin: 0; cursor: pointer;">
             📁 院内カルテ画像（複数選択）
             <input type="file" accept="image/*" multiple style="display: none;" onchange="handleKarteFiles(event)">
           </label>
           
-          <!-- 臨床メモ画像ファイル一括選択（複数可） -->
           <label class="btn btn-memo-file" style="margin: 0; cursor: pointer;">
             📁 臨床メモ画像（複数選択）
             <input type="file" accept="image/*" multiple style="display: none;" onchange="handleMemoFiles(event)">
@@ -417,7 +395,6 @@
         </div>
       </div>
 
-      <!-- ─── 全画面フルスクリーンカメラモーダル ─── -->
       <div id="cameraModal">
         <div class="camera-modal-header" id="cameraModeTitle">カメラ表示</div>
         <div class="camera-video-wrapper">
@@ -432,11 +409,6 @@
           </button>
         </div>
         <canvas id="canvas" style="display: none;"></canvas>
-      </div>
-
-      <div class="form-group" id="previewArea" style="display: none;">
-        <label class="form-label" id="previewTitle">その他添付ファイル（0件）</label>
-        <div class="preview-grid" id="previewGrid"></div>
       </div>
 
       <div class="form-group">
@@ -492,7 +464,8 @@
 </div>
 
 <script>
-  const API_BASE_URL = window.location.origin;
+  // VercelからRenderのバックエンドへ通信を固定
+  const API_BASE_URL = "https://soap-app-oz1r.onrender.com";
 
   let localStream = null;
   let activeCameraTarget = null;
@@ -729,7 +702,6 @@ A (Assessment)
     showAlert('撮影完了（追加されました）', 'success');
   }
 
-  // 📁 院内カルテ画像ファイル複数選択ハンドラー
   function handleKarteFiles(event) {
     const files = event.target.files;
     if (files && files.length > 0) {
@@ -743,11 +715,9 @@ A (Assessment)
         reader.readAsDataURL(file);
       });
     }
-    // 同じファイルを再選択できるようにリセット
     event.target.value = '';
   }
 
-  // 📁 臨床メモ画像ファイル複数選択ハンドラー
   function handleMemoFiles(event) {
     const files = event.target.files;
     if (files && files.length > 0) {
@@ -761,7 +731,6 @@ A (Assessment)
         reader.readAsDataURL(file);
       });
     }
-    // 同じファイルを再選択できるようにリセット
     event.target.value = '';
   }
 
@@ -903,7 +872,6 @@ A (Assessment)
 
     const fileName = `calte_${month}${date}${hours}${minutes}.txt`;
 
-    // 修正：先頭の余分な「＊経過」を削除しました
     const textContent = `${resProgress}
 
 ＊注意点
