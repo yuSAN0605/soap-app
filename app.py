@@ -44,9 +44,16 @@ class SoapResponse(BaseModel):
     a: str = ""
     p: str = ""
 
-# 3️⃣ 最適化：コンパイル済み正規表現の事前定義（毎回コンパイルするコストを削減）
 CLEAN_MARKDOWN_REGEX = re.compile(r'^```(?:json)?\s*|\s*```$', re.MULTILINE)
 EXTRACT_JSON_REGEX = re.compile(r'\{.*\}', re.DOTALL)
+
+def clean_base64_data(data_str: str) -> str:
+    """Base64文字列に含まれるプレフィックス（data:image/jpeg;base64,等）を除去する安全関数"""
+    if not data_str:
+        return ""
+    if "," in data_str:
+        return data_str.split(",")[1]
+    return data_str
 
 @app.post("/api/generate-soap", response_model=SoapResponse)
 async def generate_soap(request: GenerateSoapRequest):
@@ -69,7 +76,6 @@ async def generate_soap(request: GenerateSoapRequest):
         if not input_text and not karte_images and not memo_images and not attached_files:
             raise HTTPException(status_code=400, detail="At least one input must be provided.")
 
-        # 2️⃣ 最適化：テンプレート情報の事前チェック（なければ正規表現を実行せず即スキップ）
         template_context = ""
         if any(keyword in input_text for keyword in ["S (Subjective)", "O (Objective)", "A (Assessment)"]):
             sub_match = re.search(r'S \(Subjective\)([\s\S]*?)(?=O \(Objective\)|$)', input_text)
@@ -154,30 +160,36 @@ async def generate_soap(request: GenerateSoapRequest):
         if input_text:
             partsArr.append({"text": f"■ 入力テキストメモ:\n{input_text}"})
         
+        # 院内カルテ画像をGeminiに読み込ませる（最優先）
         for img_data in karte_images:
-            if img_data:
+            cleaned_b64 = clean_base64_data(img_data)
+            if cleaned_b64:
                 partsArr.append({
-                    "inline_data": {"mime_type": "image/jpeg", "data": img_data}
+                    "inline_data": {"mime_type": "image/jpeg", "data": cleaned_b64}
                 })
         
+        # 臨床メモ画像をGeminiに読み込ませる
         for img_data in memo_images:
-            if img_data:
+            cleaned_b64 = clean_base64_data(img_data)
+            if cleaned_b64:
                 partsArr.append({
-                    "inline_data": {"mime_type": "image/jpeg", "data": img_data}
+                    "inline_data": {"mime_type": "image/jpeg", "data": cleaned_b64}
                 })
         
+        # 添付ファイルをGeminiに読み込ませる
         for fileObj in attached_files:
             if isinstance(fileObj, dict) and fileObj.get("data"):
-                partsArr.append({
-                    "inline_data": {
-                        "mime_type": fileObj.get("mimeType", "application/octet-stream"),
-                        "data": fileObj.get("data")
-                    }
-                })
+                cleaned_b64 = clean_base64_data(fileObj.get("data"))
+                if cleaned_b64:
+                    partsArr.append({
+                        "inline_data": {
+                            "mime_type": fileObj.get("mimeType", "application/octet-stream"),
+                            "data": cleaned_b64
+                        }
+                    })
         
         model = genai.GenerativeModel('gemini-3.5-flash')
         
-        # 1️⃣ 最適化：非同期スレッド実行（サーバーのブロッキングを防ぎ、複数リクエストに対応）
         def _call_gemini():
             return model.generate_content(
                 partsArr,
@@ -195,13 +207,11 @@ async def generate_soap(request: GenerateSoapRequest):
         if not raw_text:
             raise ValueError("Empty response from Gemini API")
         
-        # 3️⃣ 最適化：事前コンパイルされた正規表現でマークダウンを高速除去
         raw_text = CLEAN_MARKDOWN_REGEX.sub('', raw_text).strip()
         
         try:
             result = json.loads(raw_text)
         except json.JSONDecodeError:
-            # 3️⃣ 最適化：事前コンパイルされた抽出正規表現を使用
             match = EXTRACT_JSON_REGEX.search(raw_text)
             if match:
                 try:
@@ -211,7 +221,6 @@ async def generate_soap(request: GenerateSoapRequest):
             else:
                 result = repair_json(raw_text)
         
-        # ✅ ここで確実に p_text を定義する
         p_text = result.get("p", "")
         if not p_text or not p_text.strip():
             p_text = "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
