@@ -109,7 +109,8 @@ async def generate_soap(request: GenerateSoapRequest):
 4. フリーテキスト入力
 
 ■ 各項目の厳格な記載ルール:
-- 必ず以下の形式と固定ヘッダーで始めてください：
+【progress（経過）】
+- 先頭に「経過」という単語や記号（|＊経過など）は一切含めず、以下の固定ヘッダーから直接始めてください：
 算定区分：運動器リハビリテーション料(Ⅰ)
 実施区分：2単位
 実施時間：
@@ -139,13 +140,11 @@ async def generate_soap(request: GenerateSoapRequest):
 - **医学的診断を新たに確定・断定しないこと。**
 
 【p（Plan）】
-- 介入内容は、評価結果との関連性が分かるように記載する。
-- 単に「ROM訓練を実施」とするのではなく、**「○○の制限を認めたため、○○を目的として○○を実施」のように、評価と介入の関係を明確にして記載する。**
-- 実施項目のベース：
-  #1 関節可動域訓練
-  #2 筋力強化訓練
-  #3 バランス訓練
-  #4 自主トレーニング指導
+- 理由は一切記載せず、以下の4項目のみを厳格に固定で出力してください。他の文字列を含めてはなりません：
+#1 関節可動域訓練
+#2 筋力強化訓練
+#3 バランス訓練
+#4 自主トレーニング指導
 
 【重要】以下のJSON形式で**必ず**レスポンスしてください。他の説明やマークダウンコードブロック（```json など）は一切含めず、純粋なJSON文字列のみを出力してください。
 
@@ -155,7 +154,7 @@ async def generate_soap(request: GenerateSoapRequest):
   "s": "...",
   "o": "...",
   "a": "...",
-  "p": "..."
+  "p": "#1 関節可動域訓練\\n#2 筋力強化訓練\\n#3 バランス訓練\\n#4 自主トレーニング指導"
 }}"""
 
         partsArr = [{"text": promptText}]
@@ -225,8 +224,12 @@ async def generate_soap(request: GenerateSoapRequest):
                 result = repair_json(raw_text)
         
         p_text = result.get("p", "")
-        if not p_text or not p_text.strip():
-            p_text = "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+        # 強制的にPを固定フォーマットにする
+        fixed_p = "#1 関節可動域訓練\n#2 筋力強化訓練\n#3 バランス訓練\n#4 自主トレーニング指導"
+        if not p_text or "関節可動域訓練" not in p_text:
+            p_text = fixed_p
+        else:
+            p_text = fixed_p
 
         return SoapResponse(
             progress=result.get("progress", ""),
@@ -254,7 +257,7 @@ def repair_json(broken_json: str) -> dict:
         "s": "",
         "o": "",
         "a": "",
-        "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+        "p": "#1 関節可動域訓練\n#2 筋力強化訓練\n#3 バランス訓練\n#4 自主トレーニング指導"
     }
 
 @app.get("/health")
