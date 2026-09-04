@@ -40,8 +40,7 @@ class SoapResponse(BaseModel):
     progress: str = ""
     notice: str = ""
     s: str = ""
-    o: str = ""
-    a: str = ""
+    oa: str = ""
     p: str = ""
 
 CLEAN_MARKDOWN_REGEX = re.compile(r'^```(?:json)?\s*|\s*```$', re.MULTILINE)
@@ -130,16 +129,22 @@ async def generate_soap(request: GenerateSoapRequest):
 - 患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみ。
 - 鍵カッコ「 」を使用。
 
-【o（Objective）】
-- 入力された客観的所見のみを記載すること。
-- ROM、MMT、疼痛誘発テスト、圧痛、アライメント、歩行、動作観察、関節運動などについて、入力されていない数値や所見を推測・捏造してはならない。
-
-【a（Assessment）】
-- SおよびOから得られた情報を関連付け、疼痛、可動域制限、筋力低下、関節運動、アライメント、動作などの機能障害について、理学療法士としての臨床推論を記載する。
-- 医学的診断を新たに確定・断定しないこと。
+【oa（O/A）】
+- 客観的所見（O）と臨床推論（A）を統合して記載すること。
+- 検査していない場合でも、以下の項目を必ず残して出力してください。
+- 記載フォーマット：
+ROM-T:
+MMT:
+Pain:
+alignment:
+gait:
+その他：
+- 「その他：」の項目には、A（アセスメント）の内容を記載すること。
+  - SおよびOから得られた情報を関連付け、疼痛、可動域制限、筋力低下、関節運動、アライメント、動作などの機能障害について、理学療法士としての臨床推論を記載する。
+  - 医学的診断を新たに確定・断定しないこと。
 
 【p（Plan）】
-- 理由は一切記載せず、以下の4行のみを完全固定で出力してください：
+- 理由は一切記載せず、以下の1行のみ（改行せず横一列）を完全固定で出力してください：
 #1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導
 
 【重要】以下のJSON形式で**必ず**レスポンスしてください。他の説明やマークダウンコードブロック（```json など）は一切含めず、純粋なJSON文字列のみを出力してください。
@@ -148,9 +153,8 @@ async def generate_soap(request: GenerateSoapRequest):
   "progress": "...",
   "notice": "...",
   "s": "...",
-  "o": "...",
-  "a": "...",
-  "p": "#1 関節可動域訓練\\n#2 筋力強化訓練\\n#3 バランス訓練\\n#4 自主トレーニング指導"
+  "oa": "ROM-T:...\nMMT:...\nPain:...\nalignment:...\ngait:...\nその他：...",
+  "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
 }}"""
 
         partsArr = [{"text": promptText}]
@@ -220,14 +224,13 @@ async def generate_soap(request: GenerateSoapRequest):
         raw_progress = result.get("progress", "")
         cleaned_progress = re.sub(r'^(?:[＊\*]?経過\s*[\r\n]*)+', '', raw_progress).strip()
 
-        fixed_p = "#1 関節可動域訓練\n#2 筋力強化訓練\n#3 バランス訓練\n#4 自主トレーニング指導"
+        fixed_p = "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
 
         return SoapResponse(
             progress=cleaned_progress,
             notice=result.get("notice", ""),
             s=result.get("s", ""),
-            o=result.get("o", ""),
-            a=result.get("a", ""),
+            oa=result.get("oa", ""),
             p=fixed_p
         )
     
@@ -246,9 +249,8 @@ def repair_json(broken_json: str) -> dict:
         "progress": "",
         "notice": "",
         "s": "",
-        "o": "",
-        "a": "",
-        "p": "#1 関節可動域訓練\n#2 筋力強化訓練\n#3 バランス訓練\n#4 自主トレーニング指導"
+        "oa": "ROM-T:\nMMT:\nPain:\nalignment:\ngait:\nその他：",
+        "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
     }
 
 @app.get("/health")
