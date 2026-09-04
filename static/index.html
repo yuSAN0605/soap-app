@@ -442,18 +442,13 @@
     </div>
 
     <div class="result-field-group">
-      <div class="result-field-label">O）</div>
-      <textarea id="resO" class="result-textarea" rows="4" placeholder="客観的所見（ROM, MMT, 触診, 動作観察, NRS等）"></textarea>
-    </div>
-
-    <div class="result-field-group">
-      <div class="result-field-label">A）</div>
-      <textarea id="resA" class="result-textarea" rows="3" placeholder="評価・考察"></textarea>
+      <div class="result-field-label">O/A）</div>
+      <textarea id="resOA" class="result-textarea" rows="6" placeholder="ROM-T:&#10;MMT:&#10;Pain:&#10;alignment:&#10;gait:&#10;その他："></textarea>
     </div>
 
     <div class="result-field-group">
       <div class="result-field-label">P）</div>
-      <textarea id="resP" class="result-textarea" rows="3" placeholder="#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"></textarea>
+      <textarea id="resP" class="result-textarea" rows="2" placeholder="#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"></textarea>
     </div>
 
     <button type="button" class="btn btn-pdf" id="pdfBtn" onclick="downloadTextPDF()">
@@ -464,7 +459,6 @@
 </div>
 
 <script>
-  // VercelからRenderのバックエンドへ通信を固定
   const API_BASE_URL = "https://soap-app-oz1r.onrender.com";
 
   let localStream = null;
@@ -484,15 +478,15 @@ S (Subjective)
 O (Objective)
 ▼1. 腰椎可動域・誘発テスト
 ・屈曲： ° (痛・制限：)
-・伸展： ° (痛・制限：)
-・Kemp test：右 [＋/－] (部位:) / 左 [＋/－] (部位:)
+·伸展： ° (痛・制限：)
+·Kemp test：右 [＋/－] (部位:) / 左 [＋/－] (部位:)
 
 ▼2. 下肢神経・軟部組織絞扼誘発テスト
-・SLR：Rt [＋/－] / Lt [＋/－]
+·SLR：Rt [＋/－] / Lt [＋/－]
 ·SLR内転：Rt [＋/－] / Lt [＋/－]
 ・梨状筋 (屈・内転・内旋)：Rt [＋/－] / Lt [＋/－]
-・大腿方形/内閉鎖筋 (屈・内転・外旋)：Rt [＋/－] / Lt [＋/－]
-・FNST (大腿神経伸長)：Rt [＋/－] / Lt [＋/－]
+·大腿方形/内閉鎖筋 (屈・内転・外旋)：Rt [＋/－] / Lt [＋/－]
+·FNST (大腿神経伸長)：Rt [＋/－] / Lt [＋/－]
 
 ▼3. 仙腸関節評価
 ·Patrick test：右 [＋/－] (部位:) / 左 [＋/－] (部位:)
@@ -501,9 +495,9 @@ O (Objective)
 ・座位後方荷重：[＋/－]
 
 ▼4. 触診 (圧痛・Td)
-・横突起 (胸腰筋膜中葉)：[右/左]
-・椎間関節 (多裂筋)：[右/左]
-・梨状筋 (坐骨神経ルート)：[右/左]
+·横突起 (胸腰筋膜中葉)：[右/左]
+·椎間関節 (多裂筋)：[右/左]
+·梨状筋 (坐骨神経ルート)：[右/左]
 ・PSIS付近 (仙腸関節)：[右/左]
 
 ▼5. 神経学的所見 (感覚・MMT)
@@ -525,7 +519,7 @@ S (Subjective)
 
 O (Objective)
 ▼1. 頸部可動域 (ROM)
-·屈曲： ° (痛・制限：) / 伸展： ° (痛・制限：)
+・屈曲： ° (痛・制限：) / 伸展： ° (痛・制限：)
 ・右側屈： ° (痛・制限：) / 左側屈： ° (痛・制限：)
 ・右回旋： ° (痛・制限：) / 左回旋： ° (痛・制限：)
 
@@ -534,13 +528,13 @@ O (Objective)
 ・Spurling test：右 [＋/－] (部位:)
 
 ▼3. 触診 (圧痛・Td)
-·椎間関節・椎間孔：[右/左] (部位:)
+・椎間関節・椎間孔：[右/左] (部位:)
 ・横突起 (中斜角筋・斜角筋隙)：[右/左]
-·肩甲骨上角 (肩甲挙筋・肩甲背神経)：[右/左]
+・肩甲骨上角 (肩甲挙筋・肩甲背神経)：[右/左]
 ・烏口突起下 (腕神経叢・小胸筋間隙)：[右/左]
 
 ▼4. 神経学的所見
-·知覚：C5 [] / C6 [] / C7 [] / C8 []
+・知覚：C5 [] / C6 [] / C7 [] / C8 []
 ・Tinel sign：尺骨神経 [右/左] / 正中神経 [右/左] / 橈骨神経 [右/左]
 
 ▼5. 運動機能 (MMT)
@@ -791,8 +785,7 @@ A (Assessment)
     document.getElementById('resProgress').value = "解析中...";
     document.getElementById('resNotice').value = "解析中...";
     document.getElementById('resS').value = "解析中...";
-    document.getElementById('resO').value = "解析中...";
-    document.getElementById('resA').value = "解析中...";
+    document.getElementById('resOA').value = "解析中...";
     document.getElementById('resP').value = "解析中...";
 
     try {
@@ -831,8 +824,7 @@ A (Assessment)
       document.getElementById('resProgress').value = result.progress || "";
       document.getElementById('resNotice').value = result.notice || "";
       document.getElementById('resS').value = result.s || "";
-      document.getElementById('resO').value = result.o || "";
-      document.getElementById('resA').value = result.a || "";
+      document.getElementById('resOA').value = result.oa || "";
       document.getElementById('resP').value = result.p || "";
 
       showAlert('カルテ生成に成功しました', 'success');
@@ -851,8 +843,7 @@ A (Assessment)
     document.getElementById('resProgress').value = "";
     document.getElementById('resNotice').value = "";
     document.getElementById('resS').value = "";
-    document.getElementById('resO').value = "";
-    document.getElementById('resA').value = "";
+    document.getElementById('resOA').value = "";
     document.getElementById('resP').value = "";
   }
 
@@ -860,8 +851,7 @@ A (Assessment)
     const resProgress = document.getElementById('resProgress').value || '';
     const resNotice = document.getElementById('resNotice').value || '';
     const resS = document.getElementById('resS').value || '';
-    const resO = document.getElementById('resO').value || '';
-    const resA = document.getElementById('resA').value || '';
+    const resOA = document.getElementById('resOA').value || '';
     const resP = document.getElementById('resP').value || '';
 
     const now = new Date();
@@ -880,11 +870,8 @@ ${resNotice}
 S）
 ${resS}
 
-O）
-${resO}
-
-A）
-${resA}
+O/A）
+${resOA}
 
 P）
 ${resP}`;

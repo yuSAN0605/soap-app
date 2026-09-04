@@ -47,12 +47,48 @@ CLEAN_MARKDOWN_REGEX = re.compile(r'^```(?:json)?\s*|\s*```$', re.MULTILINE)
 EXTRACT_JSON_REGEX = re.compile(r'\{.*\}', re.DOTALL)
 
 def clean_base64_data(data_str: str) -> str:
-    """Base64文字列に含まれるプレフィックスを除去する安全関数"""
     if not data_str:
         return ""
     if "," in data_str:
         return data_str.split(",")[1]
     return data_str
+
+def validate_and_fix_output(result: dict) -> tuple:
+    """パッケージ仕様の自動検証・修正ロジック"""
+    
+    # 1. Progress の先頭から余分な「経過」を削除
+    raw_progress = result.get("progress", "")
+    cleaned_progress = re.sub(r'^(?:[＊\*]?経過\s*[\r\n]*)+', '', raw_progress).strip()
+    
+    # 2. notice の取得
+    notice = result.get("notice", "").strip()
+    
+    # 3. s (Subjective) の取得
+    s_content = result.get("s", "").strip()
+    
+    # 4. O/A 統合の強制化チェック (validate_and_fix_output 相当)
+    oa_content = result.get("oa", "").strip()
+    if not oa_content or "ROM-T" not in oa_content:
+        o_part = result.get("o", "").strip()
+        a_part = result.get("a", "").strip()
+        
+        base_o = o_part if o_part else "ROM-T:\nMMT:\nPain:\nalignment:\ngait:\nその他："
+        if a_part:
+            if "その他：" in base_o:
+                oa_content = base_o.replace("その他：", f"その他：{a_part}")
+            else:
+                oa_content = f"{base_o}\nその他：{a_part}"
+        else:
+            oa_content = base_o
+    
+    # 必須の項目テンプレートが欠けている場合のフォールバック補完
+    if "ROM-T" not in oa_content:
+        oa_content = f"ROM-T:\nMMT:\nPain:\nalignment:\ngait:\nその他：\n{oa_content}"
+
+    # 5. P (Plan) の固定フォーマット化
+    fixed_p = "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+
+    return cleaned_progress, notice, s_content, oa_content, fixed_p
 
 @app.post("/api/generate-soap", response_model=SoapResponse)
 async def generate_soap(request: GenerateSoapRequest):
@@ -97,18 +133,22 @@ async def generate_soap(request: GenerateSoapRequest):
 評価情報: {parsed_a}
 """
 
-        promptText = f"""あなたは理学療法士向けの専門カルテ（SOAP）記録生成AIです。提供された情報（テキスト、画像、ファイル）を分析し、理学療法記録として正確かつ厳格に構造化したJSONデータを作成してください。
+        promptText = f"""あなたは理学療法士向けの専門カルテ（SOAP）記録生成AIです。提供された情報を分析し、理学療法記録として正確に構造化したJSONデータを作成してください。
 
 {template_context}
 
-■ 必須の出力フォーマット構造（※絶対に「O」や「A」を個別に分けず、必ず「O/A」として1つに統合してください）:
-1. progress（経過）
-2. notice（注意点）
-3. s（主観的情報）
-4. oa（客観的所見およびアセスメントを統合した項目）
-5. p（計画・固定）
+■【最重要ルール】出力フォーマットについて：
+1. 「O」や「A」という独立した項目・見出しは絶対に作成しないでください。
+2. 客観的所見と臨床推論は必ず「oa」というキー名の中で統合し、以下のフォーマットを厳守してください：
+ROM-T:
+MMT:
+Pain:
+alignment:
+gait:
+その他：
+（※「その他：」の後に、従来のAに相当する臨床推論や考察を記載してください）
 
-■ 各項目の厳格な記載ルール:
+■ 各項目の記載ルール：
 【progress（経過）】
 - 出力の先頭は必ず以下のテキストから始めてください：
 算定区分：運動器リハビリテーション料(Ⅰ)
@@ -127,25 +167,13 @@ async def generate_soap(request: GenerateSoapRequest):
 - 入力情報内に存在する項目のみ「既往歴：」「体重：」「仕事：」の形式で記載。ない場合は空文字。
 
 【s（Subjective）】
-- 患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみ。
-- 鍵カッコ「 」を使用。
-
-【oa（O/A）※絶対にOとAに分けないこと】
-- 客観的所見（ROM、MMT、Pain、alignment、gait等）と、臨床推論（Aの内容）をすべてこの「oa」の項目内にまとめて記載してください。
-- 検査していない項目がある場合でも、以下の見出し枠を必ずすべて残して出力してください。
-- 記載フォーマット：
-ROM-T:
-MMT:
-Pain:
-alignment:
-gait:
-その他：（※ここに従来のAに相当する臨床推論や考察を記載してください）
+- 患者自身の言葉のみ。鍵カッコ「 」を使用。
 
 【p（Plan）】
-- 理由は一切記載せず、以下の1行のみ（改行せず、全角スペースなどで区切った横一列）を完全固定で出力してください：
+- 理由は一切記載せず、以下の1行のみ（改行せず、スペース区切りの横一列）で出力してください：
 #1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導
 
-【重要】以下のJSON形式で**必ず**レスポンスしてください。他の説明やマークダウンコードブロック（```json など）は一切含めず、純粋なJSON文字列のみを出力してください。キー名も必ず "oa" を使用してください。
+【重要】以下のJSON形式で**必ず**レスポンスしてください。他の説明やマークダウンコードブロック（```json など）は一切含めず、純粋なJSON文字列のみを出力してください。
 
 {{
   "progress": "...",
@@ -200,7 +228,6 @@ gait:
         response = await asyncio.to_thread(_call_gemini)
         
         raw_text = response.text.strip() if response.text else ""
-        
         if not raw_text:
             raise ValueError("Empty response from Gemini API")
         
@@ -214,32 +241,18 @@ gait:
                 try:
                     result = json.loads(match.group(0))
                 except json.JSONDecodeError:
-                    result = repair_json(raw_text)
+                    result = {"progress": "", "notice": "", "s": "", "oa": "", "p": ""}
             else:
-                result = repair_json(raw_text)
+                result = {"progress": "", "notice": "", "s": "", "oa": "", "p": ""}
         
-        # 🛡️ 安全機能：万が一AIが先頭に「＊経過」や「経過」をつけて出力した場合に強制カット
-        raw_progress = result.get("progress", "")
-        cleaned_progress = re.sub(r'^(?:[＊\*]?経過\s*[\r\n]*)+', '', raw_progress).strip()
-
-        # 万が一AIがPを改行して返した場合でも、Python側で強制的に横一列に修正する
-        fixed_p = "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
-
-        # 万が一、旧キー（oやa）で返ってきた場合でもoaに統合する救済処理
-        oa_content = result.get("oa", "")
-        if not oa_content:
-            o_part = result.get("o", "")
-            a_part = result.get("a", "")
-            if o_part or a_part:
-                oa_content = f"{o_part}\nその他：{a_part}"
-            else:
-                oa_content = "ROM-T:\nMMT:\nPain:\nalignment:\ngait:\nその他："
+        # 🛡️ バリデーションおよび自動修正関数の実行
+        cleaned_progress, notice_val, s_val, oa_val, fixed_p = validate_and_fix_output(result)
 
         return SoapResponse(
             progress=cleaned_progress,
-            notice=result.get("notice", ""),
-            s=result.get("s", ""),
-            oa=oa_content,
+            notice=notice_val,
+            s=s_val,
+            oa=oa_val,
             p=fixed_p
         )
     
@@ -247,20 +260,6 @@ gait:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
-
-def repair_json(broken_json: str) -> dict:
-    for suffix in ["}", "}}", "\"}", "\"}}]"]:
-        try:
-            return json.loads(broken_json + suffix)
-        except:
-            pass
-    return {
-        "progress": "",
-        "notice": "",
-        "s": "",
-        "oa": "ROM-T:\nMMT:\nPain:\nalignment:\ngait:\nその他：",
-        "p": "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
-    }
 
 @app.get("/health")
 async def health_check():
