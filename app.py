@@ -47,7 +47,7 @@ CLEAN_MARKDOWN_REGEX = re.compile(r'^```(?:json)?\s*|\s*```$', re.MULTILINE)
 EXTRACT_JSON_REGEX = re.compile(r'\{.*\}', re.DOTALL)
 
 def clean_base64_data(data_str: str) -> str:
-    """Base64文字列に含まれるプレフィックス（data:image/jpeg;base64,等）を除去する安全関数"""
+    """Base64文字列に含まれるプレフィックスを除去する安全関数"""
     if not data_str:
         return ""
     if "," in data_str:
@@ -101,11 +101,12 @@ async def generate_soap(request: GenerateSoapRequest):
 
 {template_context}
 
-■ 情報の優先順位（情報に矛盾がある場合）:
-1. 院内カルテ画像と写真（最優先・公式記録）
-2. 構造化テンプレート入力
-3. 臨床メモ画像・写真
-4. フリーテキスト入力
+■ 必須の出力フォーマット構造（※絶対に「O」や「A」を個別に分けず、必ず「O/A」として1つに統合してください）:
+1. progress（経過）
+2. notice（注意点）
+3. s（主観的情報）
+4. oa（客観的所見およびアセスメントを統合した項目）
+5. p（計画・固定）
 
 ■ 各項目の厳格な記載ルール:
 【progress（経過）】
@@ -129,25 +130,22 @@ async def generate_soap(request: GenerateSoapRequest):
 - 患者自身の言葉(疼痛部位・疼痛動作・疼痛時間・疼痛の性質・疼痛範囲・疼痛寛解動作など)のみ。
 - 鍵カッコ「 」を使用。
 
-【oa（O/A）】
-- 客観的所見（O）と臨床推論（A）を統合して記載すること。
-- 検査していない場合でも、以下の項目を必ず残して出力してください。
+【oa（O/A）※絶対にOとAに分けないこと】
+- 客観的所見（ROM、MMT、Pain、alignment、gait等）と、臨床推論（Aの内容）をすべてこの「oa」の項目内にまとめて記載してください。
+- 検査していない項目がある場合でも、以下の見出し枠を必ずすべて残して出力してください。
 - 記載フォーマット：
 ROM-T:
 MMT:
 Pain:
 alignment:
 gait:
-その他：
-- 「その他：」の項目には、A（アセスメント）の内容を記載すること。
-  - SおよびOから得られた情報を関連付け、疼痛、可動域制限、筋力低下、関節運動、アライメント、動作などの機能障害について、理学療法士としての臨床推論を記載する。
-  - 医学的診断を新たに確定・断定しないこと。
+その他：（※ここに従来のAに相当する臨床推論や考察を記載してください）
 
 【p（Plan）】
-- 理由は一切記載せず、以下の1行のみ（改行せず横一列）を完全固定で出力してください：
+- 理由は一切記載せず、以下の1行のみ（改行せず、全角スペースなどで区切った横一列）を完全固定で出力してください：
 #1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導
 
-【重要】以下のJSON形式で**必ず**レスポンスしてください。他の説明やマークダウンコードブロック（```json など）は一切含めず、純粋なJSON文字列のみを出力してください。
+【重要】以下のJSON形式で**必ず**レスポンスしてください。他の説明やマークダウンコードブロック（```json など）は一切含めず、純粋なJSON文字列のみを出力してください。キー名も必ず "oa" を使用してください。
 
 {{
   "progress": "...",
@@ -220,17 +218,28 @@ gait:
             else:
                 result = repair_json(raw_text)
         
-        # 🛡️ 安全機能：万が一AIが先頭に「＊経過」や「経過」をつけて出力した場合に、Python側で強制的にカットする
+        # 🛡️ 安全機能：万が一AIが先頭に「＊経過」や「経過」をつけて出力した場合に強制カット
         raw_progress = result.get("progress", "")
         cleaned_progress = re.sub(r'^(?:[＊\*]?経過\s*[\r\n]*)+', '', raw_progress).strip()
 
+        # 万が一AIがPを改行して返した場合でも、Python側で強制的に横一列に修正する
         fixed_p = "#1 関節可動域訓練 #2 筋力強化訓練 #3 バランス訓練 #4 自主トレーニング指導"
+
+        # 万が一、旧キー（oやa）で返ってきた場合でもoaに統合する救済処理
+        oa_content = result.get("oa", "")
+        if not oa_content:
+            o_part = result.get("o", "")
+            a_part = result.get("a", "")
+            if o_part or a_part:
+                oa_content = f"{o_part}\nその他：{a_part}"
+            else:
+                oa_content = "ROM-T:\nMMT:\nPain:\nalignment:\ngait:\nその他："
 
         return SoapResponse(
             progress=cleaned_progress,
             notice=result.get("notice", ""),
             s=result.get("s", ""),
-            oa=result.get("oa", ""),
+            oa=oa_content,
             p=fixed_p
         )
     
