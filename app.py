@@ -213,7 +213,7 @@ gait:
                         }
                     })
         
-        model = genai.GenerativeModel('gemini-3.5-flash')
+        model = genai.GenerativeModel('gemini-3-flash')
         
         def _call_gemini():
             return model.generate_content(
